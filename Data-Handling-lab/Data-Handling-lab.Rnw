@@ -1,0 +1,1569 @@
+
+% To compile this document
+% graphics.off();rm(list=ls());library('knitr');knit('Data-Handling-lab.Rnw');  for(i in 1:2) system('R CMD pdflatex Data-Handling-lab.tex'),purl('Data-Handling-lab.Rnw');
+
+
+
+% extract R-code
+% purl('Data-Handling-lab.Rnw')
+
+\documentclass{article}
+
+<<style, echo=FALSE, results='asis'>>=
+BiocStyle::latex()
+@
+
+
+
+<<options, include=FALSE>>=
+options(digits=3, width=85, stringsAsFactors = FALSE )
+opts_chunk$set(echo=TRUE,tidy=FALSE,include=TRUE,
+               fig.path='DataHandling-',fig.show='hide',dev='png', 
+		 fig.width = 25, fig.height = 14, comment = '#>', dpi = 300,
+		cache = TRUE, lazy.load = FALSE, background="grey93",message = FALSE )
+@
+
+
+\usepackage{amsmath}
+\usepackage[T1]{fontenc}
+%%amssymb amsfonts
+\usepackage{natbib}
+\usepackage{mathpazo}
+\usepackage{soul}
+\usepackage{cases}
+\usepackage{xhfill}
+\usepackage[labelformat=empty]{caption}
+\setlength{\parindent}{0cm} 
+
+
+
+\begin{document}
+
+
+
+
+\title{Data--Handling--lab}
+\author{Bernd Klaus$^1$ \\[1em]European Molecular Biology Laboratory (EMBL),\\ Heidelberg, Germany\\
+\texttt{$^1$bernd.klaus@embl.de}}
+\maketitle
+\tableofcontents
+
+\section{Required packages and other preparations} \label{sec:prep}
+
+%
+<<required packages and data, echo = TRUE, cache = F>>=
+library(TeachingDemos)
+library(xlsx)
+library(multtest)
+library(Biobase)
+library(tidyr)
+library(reshape2)
+library(plyr)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+library(magrittr)
+@
+%
+
+
+\section{Introduction}
+
+\R{} offers a wide range of data manipulation tools that allow you to handle, compute
+on and reshape data very efficiently efficiently. We first review basic data
+handling techniques.
+
+
+\section{Review of data handling with \R{}}
+
+In this section, we want to look at some basic data handling techniques,
+e.g. subsetting it or combining data from different sources.
+
+
+\subsection{Review of filtering and access techniques}
+
+This section reviews some basic data access techniques in \R{}.
+Let's assume we have a very simple vector with named elements:
+
+<<accesRecap>>=
+sampleVector <- c("Alice" = 5.4, "Bob" = 3.7, "Claire" = 8.8)
+sampleVector
+@
+
+\subsubsection{Access by index}
+
+The simplest way to access the elements in a vector is via their indices. 
+Specifically you provide a vector of indices to say which 
+elements from the vector you want to retrieve. A minus sign excludes the respective
+positions
+
+<< accessIndex, dependson="accesRecap">>=
+sampleVector[1:2]
+sampleVector[-(1:2)]
+@
+
+
+\subsubsection{Access by boolean}
+
+If you generate a boolean vector the same size as your actual vector you can use 
+the positions of the true values to pull out certain positions from the full set. 
+You can also use smaller boolean vectors and they will be concatenated 
+to match all of the positions in the vector, but this is less common.
+
+
+<< accessBoolean, dependson="accesRecap">>=
+sampleVector[c(TRUE, FALSE, TRUE)]
+# or
+subset(sampleVector, c(TRUE, FALSE, TRUE))
+@
+
+The \Rfunction{subset} functions is a more general function for subsetting, which also
+works on more complex objects.
+
+This can also be used in conjunction with logical tests 
+which generate a boolean result. Boolean vectors can be combined with logical operators (\& and) to create more complex filters.
+
+<< accessBoolean2, dependson="accesRecap">>=
+sampleVector[sampleVector < 6]
+# or
+subset(sampleVector, sampleVector < 6 | names(sampleVector) == "Bob")
+@
+
+\subsubsection{Multidimensional data structures}
+
+Very often, the data structure you are looking at has a multidimensional
+structure, e.g. is data.frame or a list. Here, access works in exactly the
+same way but in two dimensions. We use a small patients data set as an example
+
+
+<<multiDAEx >>=
+pat<-read.csv("http://www-huber.embl.de/users/klaus/BasicR/Patients.csv")
+pat
+pat[1,c(1:3)]
+pat["P1",]
+@
+
+There are additional access options for data frames and lists available
+(a data frame is always a list). You can use the dollar sign to access 
+a column of a data frame and an element of a list or use the double bracket
+operator.
+
+
+<<multiDAEx2, dependson="multiDAEx">>=
+pat$"Weight"
+pat[["Weight"]][3]
+# often acces via the dollar sign works without quotes (but for numbers!)
+pat$Height
+@
+
+\subsection{Subsetting and information extraction with a data table}
+
+We will illustrate subsetting and extraction techniques using a typical 
+data table -- a data set on variables influencing your body fat:
+
+A variety of popular health books suggest  that the readers assess their health, 
+at least in part, by estimating their percentage of body fat.  We will illustrate 
+the  techniques using the data set ``bodyfat'', which 
+contains variables that could be used to build models predictive of body fat:
+
+ \begin{itemize}
+\item  Density determined from underwater weighing
+\item  Percent body fat from Siri's (1956) equation
+\item  Age (years)
+\item  Weight (lbs)
+\item  Height (inches)
+\item  Neck circumference (cm)
+ \item Chest circumference (cm)
+ \item  Abdomen 2 circumference (cm)
+ \item  Hip circumference (cm)
+ \item  Thigh circumference (cm)
+ \item  Knee circumference (cm)
+ \item Ankle circumference (cm)
+ \item  Biceps (extended) circumference (cm)
+ \item  Forearm circumference (cm)
+\item  Wrist circumference (cm)
+\end{itemize}
+
+First, we import the data set and inspect it a bit.
+<<loadBodyfat,   echo = TRUE>>=
+load(url("http://www-huber.embl.de/users/klaus/BasicR/bodyfat.rda"))
+dim   (bodyfat)    # how many rows and columns in the dataset?
+names (bodyfat)    # names of the columns
+@
+
+
+To get a first impression of the data, we can compute some summary
+statistics for e.g. age. We can get all these statistics for all the
+data at once by using an appropriate \Rcode{apply} command. 
+
+<<age-summary,   echo = TRUE>>=
+## compute descriptive statistics for "age"
+summary(bodyfat$age)
+sd(bodyfat$age)
+mean(bodyfat$age)
+IQR(bodyfat$age)/1.349
+## mean value of every variable in the bodyfat data set
+apply(bodyfat, MARGIN = 2, FUN = mean)
+## alternative : sapply(bodyfat, FUN = mean)
+@
+
+Very often you want to access a certain subset, say all samples with age between
+ 40 and 60 and height between 50 and 65 inches. This can be done by using logical
+operators in combination with the variables. This then evaluates to \Rfunction{TRUE}
+or \Rfunction{FALSE} for every sample.  
+The corresponding indices that evaluate to \Rfunction{TRUE} can be obtained 
+via the function \Rfunction{which}:
+
+
+<<age-sub, echo = TRUE>>=
+## all samples with age between 40 and 60 and height
+##between 50 and 65
+bodyfat[  bodyfat$age > 40 & bodyfat$age < 60 & bodyfat$height > 50 & bodyfat$height < 65, ]
+
+### get the corresponding indices
+which( bodyfat$age > 40 & bodyfat$age < 60 & bodyfat$height > 50 & bodyfat$height < 65)
+
+### and samples
+bodyfat[  which( bodyfat$age > 40 & bodyfat$age < 60 & bodyfat$height > 50 & bodyfat$height < 65)
+, ]
+@
+
+However, there is a certain subtle side effect  using \Rfunction{which}.
+It tends you have unintended consequences if all elements of the vector of 
+booleans you're querying are \Rfunction{FALSE}. Then  \Rfunction{which()} will 
+return no indices. Therefore you should use which with care when accessing
+subsets of your data!
+
+<<which-side-eff,  echo = TRUE>>=
+max(bodyfat$age)
+# 81
+head(bodyfat[  !(bodyfat$age  > 81), ])
+
+bodyfat[  !which(bodyfat$age  > 81), ]
+## not equivalent!
+@
+
+An alternative to the use of \Rfunction{which()} for subsetting is to
+use the function \Rfunction{subset}. It can select rows and columns of a 
+data frame.
+
+<<subset-example,   echo = TRUE>>=
+## all samples with age between 40 and 60
+## and height between 50 and 65
+idx.age <- bodyfat$age > 40 & bodyfat$age < 60 & bodyfat$height > 50 & bodyfat$height < 65
+subset(bodyfat, idx.age)
+
+## only their bodyfat
+subset(bodyfat, idx.age, select ="percent.fat")
+@
+
+
+
+
+\section{Handling complex objects in \R{}: microrarray data*}
+So far, we have only been concerned with the handling of very simple objects
+in \R{}. Now will look at to examples of more complex data set. The case is in point
+for such data sets are microrarray data, the handling of which we will explore 
+in this section.
+
+\subsection{The Golub data}
+ The gene expression data collected by Golub et al. (1999): 
+\href{http://dx.doi.org/10.1126/science.286.5439.531}{
+Molecular classification of cancer: class discovery and class prediction 
+by gene expression monitoring} are 
+among the classical data sets in bioinformatics. 
+A pre--processed selection of the set is called golub and is contained
+in the \Biocpkg{multtest} package, which is part of Bioconductor.  \\
+
+The data consist of gene expression values of 3051 genes (rows) 
+from 38 leukemia patients (columns).
+Twenty seven patients are diagnosed as acute lymphoblastic leukemia (ALL)
+and eleven as acute myeloid leukemia (AML). \\
+
+The tumor class is given by
+the numeric vector \Robject{golub.cl}, where ALL is indicated by 0 and AML by
+1. The gene names are collected in the matrix \Robject{golub.gnames} of which the
+columns correspond to the gene index,  ID, and Name, respectively. \\
+
+We shall concentrate on expression values of a gene with probe set number
+``M92287\_at'', which is known  as ``CCND3 Cyclin D3''. The expression 
+values of this gene are collected in row 1042 of golub. To load the
+data and to obtain relevant information from row 1042 of \Robject{golub.gnames}, use
+the following code:
+
+
+<<golub-read-in,   echo = TRUE, eval = TRUE>>=
+
+# load the golub data
+data(golub, package = "multtest")
+dim(golub)
+str(golub)
+golub.gnames[1042,]
+### expression values of CCND 3
+golub[1042,]
+## define group factor
+gol.fac <- factor(golub.cl, levels=0:1, labels = c("ALL","AML"))
+@
+
+So the matrix has 3051 rows and 38 columns, see also \Rfunction{dim(golub)}. Each
+data element has a row and a column index. Recall that the first index refers
+to rows and the second to columns. To view such large data sets, the function 
+\Rfunction{head} is very useful. \\
+
+The factor  \Robject{gol.fac} and was constructed from the vector \Robject{golub.cl,}
+indicating the tumor class of the patients. This will turn out useful e.g.
+for separating the tumor groups in various visualization procedures.
+
+\subsubsection*{Exercise: Handling the Golub data}
+
+
+\begin{enumerate}[label=(\emph{\alph*})] 
+
+\item Print the gene expression values of Gene CCND3 for all AML patients using the factor
+\Robject{gol.fac}.
+
+\item For many types of computations it is very useful to combine a factor with
+the apply functionality: Use an apply function to compute the mean gene expression
+over the ALL and AML patients for each of the genes. 
+
+
+\item Order the data matrix according to the mean expression values for ALL patients
+in decreasing order and give the names of the genes with largest mean expression value for ALL patients. 
+
+\end{enumerate}
+
+\subsection{Bioconductor expression sets}
+
+In the last section we familiarized ourselves with the Golub microarray data
+which consists of three different objects: a matrix \Robject{golub} holding the
+gene expression measurements in a \Robject{data.frame}, \Robject{golub.gnames} holding
+the annotation of the genes and a \Robject{golub.cl} holding the sample groups.
+
+This illustrates that genomic data can be very complex, 
+usually consisting of a number of different bits and pieces. 
+In Bioconductor the approach is taken that these  pieces should be stored in 
+a single structure to easily manage the data. 
+
+The package \Biocpkg{Biobase} contains standardized data structures 
+to represent genomic data. The \Robject{ExpressionSet} class is designed 
+to combine several different sources of information into a single convenient 
+structure. An ExpressionSet can be manipulated (e.g., subsetted, copied),
+and is the input to or output of many Bioconductor functions. \\
+
+The data in an ExpressionSet consist of
+
+\begin{enumerate}[label=(\emph{\alph*})] 
+\item \textbf{assayData}: Expression data from microarray experiments 
+(assayData is used to hint at the methods used to access different data 
+components).
+
+\item \textbf{metaData}: A description of the samples in the experiment
+(phenoData), metadata about the features on the chip or technology used for the
+experiment (featureData), and further annotations for the features, for example 
+gene annotations from biomedical databases (annotation).
+
+\item \textbf{experimentData}: A flexible structure to describe the experiment.
+
+\end{enumerate}
+
+The ExpressionSet class coordinates all of these data, so that you do not usually
+have to worry about the details. However, an ExpressionSet needs to be created in
+the first place, because it will be the starting point for many of the analyses 
+using Bioconductor software.
+
+<<sumexp, echo=FALSE, fig.show='asis'>>=
+par(mar=c(0,0,0,0))
+plot(1,1,xlim=c(0,100),ylim=c(0,100),bty="n",
+     type="n",xlab="",ylab="",xaxt="n",yaxt="n")
+polygon(c(45,80,80,45),c(10,10,70,70),col=rgb(1,0,0,.5),border=NA)
+polygon(c(45,80,80,45),c(68,68,70,70),col=rgb(1,0,0,.5),border=NA)
+text(62.5,40,"assay(s)", cex = 3)
+text(62.5,30,"e.g. 'exprs'", cex = 3)
+polygon(c(20,40,40,20),c(10,10,70,70),col=rgb(0,0,1,.5),border=NA)
+polygon(c(20,40,40,20),c(68,68,70,70),col=rgb(0,0,1,.5),border=NA)
+text(30,40,"featureData", cex = 3)
+polygon(c(45,80,80,45),c(75,75,90,90),col=rgb(.5,0,.5,.5),border=NA)
+polygon(c(45,47,47,45),c(75,75,90,90),col=rgb(.5,0,.5,.5),border=NA)
+text(62.5,82.5,"phenoData", cex = 3)
+@
+
+
+
+In the following exercise, you learn how to handle \Robject{ExpressionSet}
+objects. Note that printing an Expression set object will 
+return an informative summary of the object: it often gives you hints
+on how to extract data from the object. For example, you can
+get the expression data using the function \Rfunction{exprs}.
+
+\subsubsection*{Exercise: Handling Bioconductor expression sets}
+
+
+\begin{enumerate}[label=(\emph{\alph*})] 
+
+\item obtain sample expression set object from the \Biocpkg{Biobase} Bioconductor
+package using \Rfunction{data(sample.ExpressionSet)} and extract 
+the contained gene expression data. Use the function 
+\Rfunction{slotNames()} to obtain an overview of the elements or "slots" of
+the object.
+
+\item Extract a description of the experiment from the object. Which variables
+have been measured on which samples? Is there any metadata on the variables?
+
+\item Which microarray was used in the experiment? Which "features" (probes) 
+are  measured?
+
+\item How many control probes are contained in the data set?
+HINT: Their names starts with "AFFX", use the function \Rfunction{grep} 
+to obtain them. They are usually filtered out prior to further analysis.
+
+\item Find out how to obtain a \Robject{phenoData} table, i.e. a 
+table containing the sample annotation.
+
+\end{enumerate}
+
+
+\section{Advanced data handling with \CRANpkg{dplyr} verbs }
+
+The handling techniques available in base \R{} can be greatly enhanced by using
+the data manipulation ``verbs'' that are available in \CRANpkg{dplyr}.
+They allow easy and efficient handling and manipulation of data frames.  
+
+\subsection{Subsetting and viewing functions in  \CRANpkg{dplyr}}
+
+The package  \CRANpkg{dplyr} provides a ``grammar'' of data manipulation.
+We will also use it later in the context of the  ``split--apply--combine'' 
+strategy that we will discuss below. 
+
+Since the first thing you do in a data manipulation task is to subset/transform
+your data, it includes ``verbs'' that provide basic functionality. We will
+introduce these in the following. The command structure for all \CRANpkg{dplyr} verbs is :
+
+\begin{itemize}
+  \item first argument is a data frame
+  \item return value is a data frame
+  \item nothing is modified in place
+\end{itemize}
+
+
+Note that \CRANpkg{dplyr} generally does not preserve row names.
+A further introductory document including a youtube video by Kevin Markham can be 
+found  \href{http://www.dataschool.io/dplyr-tutorial-for-faster-data-manipulation-in-r/}{here}.
+
+\subsection{Selecting rows with \Rfunction{filter()}}
+
+The function \Rfunction{filter()} allows you to select a subset of the rows of 
+a data frame. The first argument is the name of the data frame, and the 
+second and subsequent are filtering expressions evaluated in the context of 
+that data frame. This makes the selection commands above less verbose
+and easier to grasp.
+
+<<>>=
+## all samples with age between 40 and 60
+
+head(filter(bodyfat, age > 40, age < 60 ))
+
+tail(filter(bodyfat, age > 40, age < 60 ))
+@
+
+\Rfunction{filter()}  works similarly to \Rfunction{subset()} except 
+that you can give it any number of filtering 
+conditions which are joined together with \& (not \&\& 
+which is easy to do accidentally otherwise). 
+You can use other boolean operators explicitly as in :
+
+<<>>=
+## all samples with age of 40 or 60
+
+head(filter(bodyfat, age == 40 | age == 60 ), 3)
+tail(filter(bodyfat, age == 40 | age == 60 ), 3)
+@
+ 
+\Rfunction{head()} and \Rfunction{tail()} return the first and the last
+entries of a data frame respectively.
+
+\subsection{Arranging rows with \Rfunction{arrange()}}
+ 
+\Rfunction{arrange()} works similarly to  \Rfunction{filter()} except that 
+instead of filtering or selecting rows, it reorders them. 
+It takes a data frame, and a set of column names 
+(or more complicated expressions) to order by. 
+If you provide more than one column name, each additional column will be
+used to break ties in the values of preceding columns:
+
+
+<<>>=
+## arrange by age and bodyfat
+head(arrange(bodyfat, age, percent.fat),3 )
+@
+
+Use \Rfunction{desc()} to order a column in descending order:
+
+<<>>=
+## descending
+head(arrange(bodyfat, desc(age), percent.fat),3 )
+@
+
+
+\subsection{Select columns with \Rfunction{select()}}
+
+Often you work with large data sets with many columns where only a few are 
+actually of interest to you. \Rfunction{select()}
+allows you to rapidly zoom in on a useful subset using operations that usually
+only work on numeric variable positions:
+
+<<>>=
+## select fact age and heigth only
+head(select(bodyfat, age, height, percent.fat ))
+
+## select all body measures
+head(select(bodyfat, weight:wrist.circum))
+
+## exclude all body measures
+head(select(bodyfat, -(weight:wrist.circum)))
+@
+
+Note that the base function \Rfunction{subset()} includes an option that works
+similar to the \Rfunction{filter()} function. 
+
+\subsection{Add columns with \Rfunction{mutate()}}
+
+Additionally, \Rfunction{dplyr::mutate()}, 
+similarly to  \Rfunction{base::transform()}, allows to add columns.
+The key difference between \Rfunction{mutate()} and 
+\Rfunction{transform()} is that mutate allows you to refer to columns that 
+you just created. (The double colon allows you to access functions from
+a specific package.)
+
+For example, going to the patients data, we can easily calculate a BMI column
+using  \Rfunction{mutate}:
+<<mutate-example>>=
+pat<-read.csv("http://www-huber.embl.de/users/klaus/BasicR/Patients.csv")
+pat$Weight[2] = mean(pat$Weight, na.rm=TRUE)
+mutate(pat, BMI = Weight / Height^2)
+@
+
+\subsection{Summaries with \Rfunction{summarize()}}
+
+The function \Rfunction{summarize()}, which creates a new data frame
+from a calculation on the current one collapses \Robject{bodyfat} to a single 
+row. This  not very useful yet but becomes very handy on grouped/splitted data.
+
+<<>>=
+summarize(bodyfat, mean.age = mean(age, na.rm = TRUE), 
+              mean.BMI = mean( (weight*0.454) / (height*.0254)^2 ) )
+@
+
+Again, it will become useful later, when we apply functions on splitted data frames.
+
+\subsection*{Commonalities}
+
+You may have noticed that all these functions are very similar:
+
+\begin{itemize}
+\item The first argument is a data frame.
+
+\item The subsequent arguments describe what to do with it, 
+and you can refer to columns in the data frame directly without using \$
+
+\item  The result is a new data frame
+\end{itemize}
+
+Together these properties make it easy to chain together multiple simple steps 
+to achieve a complex result.
+
+These five functions provide the basis of a language of data manipulation.
+At the most basic level, you can only alter a tidy data frame in five useful ways:
+you can reorder the rows (\Rfunction{arrange()}), pick observations and variables of interest
+(\Rfunction{filter()} and \Rfunction{select()}), add new variables that are functions of existing 
+variables (\Rfunction{mutate()}) or collapse many values to a summary (\Rfunction{summarize()}). 
+
+The remainder of the language comes from applying the five functions 
+to different types of data, like to grouped data, as described  in the next
+section.
+
+
+\subsubsection*{Exercise: Bodyfat data }
+
+\begin{enumerate}[label=(\emph{\alph*})] 
+\item Calculate mean and sd for all the variables in the data set.
+HINT: Use an appropriate \texttt{apply} function.
+
+\item Find the indexes of all men in the data set that are relatively small, i.e, who are less than \texttt{mean(height) - sd(height)} tall.
+\item Compute a similar index for weight, i.e. find the light people.
+\item Find the small and light people, i.e. find the intersection of the two index-sets. 
+Use the logical operator \Robject{\&} --- and.
+\end{enumerate}
+
+
+
+\section{Computing with large data sets: the split--apply--combine strategy}
+
+Very often, data analysis happens in a "split--apply--combine" fashion. 
+You  break up a bigger problem into manageable pieces, operate on each piece 
+independently and then put all the pieces back together. 
+
+We will illustrate this using a subset of plates from a high throughput screen
+RNAi screen (\href{http://dx.doi.org/10.1038/ncb2510}{
+Simpson et. al. 2012, Nature Cell Biology}). In a nutshell, plates with
+384 spots containing HeLa cells were transfected with specific siRNAs targeting 
+certain genes.
+
+The general aim of the screen was then to identify  genes important in the early 
+secretory pathway. This was studied by imaging the transport of a model protein
+called VSVG from the ER to the golgi and then to the plasma membrane. 
+
+Here we look at 3 plates and all their replicates from the screen, the data 
+contains annotation information, (e.g. plate number, well number, well row and column etc.) 
+and the columns \Robject{TransR.n} (for normalized transport ratio) which 
+is  a measure indicating the transport success as well as \Robject{CellNumber(.n)} containing 
+the number of cells per spot. The transport ratio is the ratio of intracellular VSVG 
+protein over VSVG protein exposed on the cell surface.
+
+Note that it is common to represent  a spot on a plate by combination of its row-- and
+column number, whereby row numbers are given by upper--case letters. We first load
+the data.
+
+
+<<HTS-data,   echo = TRUE>>=
+load(url("http://www-huber.embl.de/users/klaus/BasicR/HTSdata.RData"))
+head(HTSdata)
+@ 
+
+\subsection{Grouping and summarizing}
+
+The \CRANpkg{dplyr} now provides the framework to use a split--apply-combine
+strategy. These selection verbs introduced above are useful, but they become 
+really powerful when you combine them with the idea of ``group by'' or \textbf{
+splitting} operator, repeating the operation individually on groups of 
+observations within  the dataset. 
+
+In \CRANpkg{dplyr}, you use the \Rfunction{group\textunderscore by()} function to describe how to break 
+a dataset 
+down into groups of rows. You can then use the resulting object in the exactly 
+the same verb--functions as above; they'll automatically work ``by group'' when 
+the input is a grouped.
+
+Of the five verbs, \Rfunction{select()} is unaffected by grouping, 
+and grouped \Rfunction{arrange()}
+orders first by grouping variables. 
+Group-wise \Rfunction{mutate()} and \Rfunction{filter()}
+are most useful in conjunction with window functions, and are described in detail
+in a  \href{http://cran.r-project.org/web/packages/dplyr/vignettes/window-functions.html}{corresponding vignette}
+and will not be discussed here.
+
+%
+
+ As an example, in order to split our data according
+to the plate numbers, we can use the following command:\\
+
+
+<<split-example>>=
+split.HTS <- group_by(HTSdata, plate)
+split.HTS
+@
+We get back a \Robject{grouped\textunderscore df}, which is a special class in \CRANpkg{dplyr}
+that is also a \Rclass{data.frame}. We can also split by single plates
+
+
+<<split-example-2>>=
+split.HTS.rep  <-  group_by(HTSdata, plate, replicate)
+split.HTS.rep
+@
+
+We can now make full use of the  \Rfunction{summarize()} 
+function, which constructs a new data frame using the columns of the current one.
+Fore example, we can easily use \Rfunction{summarize} to compute average cell numbers
+per single plate using the grouped data frame just obtained. 
+
+
+<<summarize-example>>=
+HTS.cellNumbers  <- summarize(split.HTS.rep, mean.CN = mean(CellNumber, na.rm = T))
+HTS.cellNumbers
+@
+
+We see that plate 152 has a lower cell number than the other two plates on average.
+It is also handy to use custom functions, for example computing the ratio of mean
+and median cell number for every plate: 
+
+<<custom function-example>>=
+HTS.skew <- summarize(split.HTS.rep,
+HTS.CN.skew = mean(CellNumber, na.rm = T) / median(CellNumber, na.rm = T)) 
+
+HTS.skew
+@
+
+
+We see that the cell numbers are quite symmetrically distributed. Note that 
+summarizing peels of one level of grouping, thus we can now easily
+compute a mean skew per plate.
+
+<< peeling example>>=
+plate.HTS.skew <- summarize(HTS.skew, mean.CN.skew = mean(HTS.CN.skew))
+
+plate.HTS.skew 
+@
+
+\subsection{Other useful functions }
+
+
+\CRANpkg{dplyr} provides a handful of others useful helper functions:
+
+\begin{itemize}
+ 
+\item \Rfunction{tbl\_df()} : creates a ``local data frame''. It simply 
+a wrapper for a data frame that prints nicely, similar to \Rclass{DataFrame}
+from \Biocpkg{IRanges}.
+
+\item \Rfunction{glimpse()} : nice alternative to \Rfunction{str} that
+will print columns down the page and data rows run across.
+
+
+\item \Rfunction{sample\_n()} : sample $n$ random rows from a \Rclass{tbl\_df}.
+There also exists sample\_frac()
+
+\item \Rfunction{n()} : number of observations in the current group
+
+\item \Rfunction{tally()} : will call \Rfunction{n()} or \Rfunction{sum(n)},
+depending on whether you call it you're tallying for the
+first time, or re--tallying.
+
+\item  \Rfunction{n\textunderscore distinct(x)} : count the number of unique values in \Rcode{x}.
+
+\item  \Rfunction{first(x)}, \Rfunction{last(x)} and \Rfunction{nth(x, n)} --- these work similarly to
+\Rfunction{x[1]}, \Rfunction{x[length(x)]}, and \Rfunction{x[n]}
+but give you more control of the result if the value isn't present.
+
+Some examples of their usage:
+<< helper functions example>>=
+## nice plotting
+HTSdata <- tbl_df(HTSdata )
+
+sample_n(HTSdata, 3) 
+
+## overview of variable 
+glimpse(HTSdata)
+
+## number of different plate designs
+summarize(HTSdata, n_distinct(plate) )
+
+## number of replicates per plate for  plates 
+## with number greater than 15
+filter(
+  summarize(
+      group_by(HTSdata, plate),
+      rep.per.plate = n_distinct(replicate)
+      )
+  , plate > 15)
+@
+
+\end{itemize}
+
+\section{chaining with \CRANpkg{magrittr}}
+
+The \CRANpkg{dplyr} interface is functional in the sense that function calls don't 
+have side--effects so  you must always save their results. This doesn't lead 
+to particularly elegant code if you want to do many operations at once. 
+You either have to do it step--by--step or wrap the function calls inside each other
+as we did above. 
+
+This is difficult to read because the order of the operations is from inside to out,
+and the arguments are a long way away from the function. 
+To get around this problem, \CRANpkg{dplyr} imports
+the \% \textgreater \% operator (read ``in'') from the package \CRANpkg{magrittr}.
+
+
+\subsection{The chaining operators and its usage}
+
+x \% \textgreater \% f(y) turns into f(x, y) so you can use 
+it to rewrite multiple operations so you can read from left--to--right, 
+top--to--bottom:
+
+<< chainingSimpleExample>>=
+
+# create two vectors and calculate Euclidian distance between them
+x1 <- 1:5; x2 <- 2:6
+
+# usual way 
+sqrt(sum((x1-x2)^2))
+
+# chaining method
+(x1-x2)^2 %>% 
+sum() %>%
+sqrt()
+
+@
+
+which is much easier to grasp. We can also apply this to our HTS: 
+
+<< chaining example>>=
+## number of plates
+summarize(HTSdata, n_distinct(plate) )
+
+## number of replicates per plate for  plates 
+## plate number greater than 15
+
+HTSdata %>%  
+group_by(plate)  %>%
+summarize(rep.per.plate = n_distinct(replicate)) %>%
+filter(plate > 15)
+
+@
+
+It makes clear that you group first, 
+then you summarize and then you filter. 
+
+\subsection{The \Rfunction{do} function for general operations on grouped
+data* }
+
+The  \Rfunction{do} allows to apply functions on (grouped) data frames that
+return complex return values, e.g. lists. A case in point are regression
+fits. Nonetheless, its handling is quite complex but described here for
+completeness.
+
+The function \Rfunction{do}  always returns a data frame. The first columns
+in the data frame will be the group labels, the others will be computed from 
+arguments. Named arguments become list--columns in the result data frame, with one 
+element for each group; 
+unnamed elements \textbf{must be data frames} and labels will be duplicated 
+accordingly.
+
+
+For example, we can print the first two sample points per single plate
+using the dot operator for accessing the input to  \Rfunction{do} in
+an unnamed argument. Note the duplicated label columns!
+
+
+<<>>=
+HTSdata %>%  
+group_by(plate, replicate)  %>%
+do( head(.,2))
+@
+
+Naming the argument returns a list in the non--group columns. Note that
+due to the usage of lists, there are now no duplicated label columns.
+
+<<>>=
+Preview <- HTSdata %>%  
+group_by(plate, replicate)  %>%
+do(plate.preview = head(.,2))
+
+Preview$plate.preview[[1]]
+@
+
+\subsubsection*{Exercise: HTS data handling}
+
+\begin{enumerate}[label=(\emph{\alph*})]
+\item load the HTS data from\\
+
+\url{http://www-huber.embl.de/users/klaus/BasicR/HTSdata.RData}. \\
+
+\item Compute the mean (function \Rfunction{mean}) and
+standard deviation (function \Rfunction{sd}) of the 
+cell number for every single plate.
+
+\item Using the function \Rfunction{identity} in connection with
+the dot operator and the \Rfunction{do}, create a list of vectors 
+containing only the non--infinite transport ratios 
+for every single plate, replacing the non-finite ratios by zero. 
+
+HINT: Use  the function \Rfunction{is.finite} as well as an \Robject{ifelse} command.
+
+\end{enumerate}
+
+
+
+
+\section{Tidy data and easy reshaping of data frames}
+
+\subsection{The concept of tidy data}
+A lot of analysis time is spent on the process of cleaning and preparing
+the data. Data preparation is not just a first step, but must be
+repeated many over the course of analysis as new problems come to light or new data is
+collected. An often neglected, but important aspect of data cleaning is 
+data tidying: structuring datasets to facilitate analysis.
+
+
+This ``data tidying'' includes the ability to move
+data between different different shapes.
+
+
+In a nutshell, a  dataset is a collection of values, usually either numbers 
+(if quantitative) or
+strings (if qualitative). Values are organized in two ways. Every value belongs to a
+variable and an observation. A variable contains all values that measure the same 
+underlying attribute (like height, temperature, duration) across units. 
+
+An observation contains all values measured on the same unit (like a person, or a day, 
+or a race) across attributes.
+
+A tidy data frame now organizes the data in such a way that 
+each observation corresponds to an single line in the data set.
+This is in general the most appropriate format for downstream analysis, although
+it might not be the most appropriate form for viewing the data.
+
+For a thorough discussion of this topic see the paper by  \href{http://www.jstatsoft.org/v59/i10/paper}{Hadley Wickham - tidy data}.
+
+
+\subsection{Reshaping data: \CRANpkg{tidyr} and \CRANpkg{reshape2} }
+
+
+To illustrate the concepts, we're looking at some experimental data: different doses of HFG (a cytokine)
+were applied to cells and the downstream effect to the phosphorylation of  target
+proteins were assessed recording a time course--signal in different conditions.
+This data and the exercise ideas were provided by Lars Velten (Steinmetz lab). 
+We first  load  the dataset.
+
+<<load-protein-data>>=
+proteins <- read.csv("http://www-huber.embl.de/users/klaus/BasicR/proteins.csv")[,-1]
+sample_n(proteins, 4)
+proteins_pMek <- subset(proteins, Target == "pMEK")
+proteins_pMek_sub <- subset(proteins_pMek, Condition == "10ng/mL HGF")
+@
+
+We can start simple by only looking at the first condition 
+of the "pMEK" protein target for now. We 
+produce a line plot of the signal across time. In this plot
+we use the function \Rfunction{qplot} from the \CRANpkg{ggplot2},
+which is very similar to the standard \R{} function \Rfunction{plot}.
+
+<<plot-protein-data, fig.show='asis'>>=
+proteins_pMek_sub
+qplot(min, Signal, data = proteins_pMek_sub, geom = "line")
+@
+
+
+\subsection{Gathering and spreading of data frames}  
+
+The data table we loaded was already suitable for the plot we wanted 
+to produce since every line represented exactly one observation. 
+However, this is not necessarily the case and we might want to represent
+the different time points by different columns, not just a single one.
+
+In time series analysis parlance our current data would be in ``long'' format,
+but we might want to transform it into a ``wide'' format, with a separate 
+column for every time point. For example, the package \CRANpkg{tidyr} allows 
+you to do this. For example, \CRANpkg{ggplot2} usually requires ``long'' formats, 
+which can be obtained by using the function \Rfunction{gather}. Thus a ``gathered''
+data frame  corresponds to a ``long'' format.  ``Wide'' formats
+can be computed using the function \Rfunction{spread}. 
+
+
+As an example we will now represent every time point of 
+our data frame as a single column. 
+
+Note that the wide format is only compatible with a single numerical target
+variable, so we only include signal as a variable here.
+
+
+
+
+In summary, \CRANpkg{tidyr} has two main functions:
+
+\begin{itemize}
+  \item  \Rfunction{gather()} takes multiple columns,
+  and gathers them into key--value pairs: it  makes ``wide'' data longer.
+   \item  \Rfunction{spread()} takes two columns (key \& value) and 
+   spreads into multiple columns, it makes ``long'' data wider.
+\end{itemize}
+
+Since it works with key--value pairs, 
+\CRANpkg{tidyr} also provides the functions \Rfunction{separate()} and 
+\Rfunction{extract()}  which makes it easier to pull apart a column that 
+represent multiple variables. The complement to \Rfunction{separate()} 
+is \Rfunction{unite()}. 
+
+We first remove the \Robject{Signal} column and the ``spread'' the minute column.
+
+<<spread_example_tidyr,   echo = TRUE, eval = TRUE>>=
+proteins_spread <- proteins %>%
+  select(-Sigma) %>%
+  spread(key = min, value = Signal)
+
+ sample_n(proteins_spread, 4)
+@
+
+
+We can now gather the data frame again. For gathering, we specify 
+that we want to ``gather'' time columns again
+by excluding the \Robject{Target} and \Robject{Condition} columns.
+
+A factor column is then added to indicate to which
+former column a measurement belongs to. In our case this is the
+time point. Another useful function is \Rfunction{arrange}
+which allows you to reorder the data frame according
+to certain columns.  
+
+
+<<gather_example,   echo = TRUE, eval = TRUE>>=
+proteins_gathered <- proteins_spread %>% 
+  gather(key = min, value = Signal, -Target, -Condition) 
+
+sample_n(proteins_gathered, 4)
+@
+
+
+\subsection{Another example: TSS plots*}
+
+In this example, we have a table summarizing the  coverage around 
+150 transcription start sites of a ChiPSeq experiment with 3 conditions: Put simply,
+it has been counted how often a ChIP--Seq fragment overlapped the genomic positions
+around the TSSs.
+
+
+A certain radiation dose has been applied to mouse oocytes for one / four hours
+respectively and there is one ``mock IP'' control sample (WT). The condition is saved 
+in a column \Rcode{time}, the ENSEMBL ID in  \Rcode{geneID} and the other columns 
+give the position relative to the TSS. It is hypothesized that increasing radiation
+will increase the binding of the transcription factor. Thus, as time progresses a 
+distinct peak should become visible upstream of the TSS indicating the binding
+of the transcription factor to the promoters of the genes.
+
+The data has been provided by Elisabeth Zielonka from the Hentze lab. 
+
+<<TSSplotPrep >>=
+covs <- read.csv(url("http://www-huber.embl.de/users/klaus/BasicR/DataTSS/covs.csv"))
+names(covs) <- c("geneID", setdiff(seq(-3000,3000),0), "time")
+sample_n(covs,10)[,1:5]
+@
+
+We clearly see that the data is in long format, since each position has
+its own column. In order to turn it into a wide format, we need to gather
+the position columns. This can be easily achieved by a call to gather, excluding
+
+
+We then apply the mean per position and plot a smoothed
+version of the curves.
+
+<<TSSplot, dependson="TSSplotPrep", fig.show='asis'>>=
+
+dataGathered <- covs %>%
+    gather(key = "posRelToTSS", value = "coverage", -geneID, -time)
+    
+dataGathered$posRelToTSS <- as.integer(dataGathered$posRelToTSS)
+
+sample_n(dataGathered, 10)
+
+covs_collapsed <- dataGathered %>%
+        group_by(time, posRelToTSS) %>%
+                  summarize(coverageC = mean(coverage))
+
+qplot(posRelToTSS, coverageC,  color = time, 
+      data=covs_collapsed, geom="smooth") 
+
+@
+
+
+We can see that the binding of the transcription factor to the promoter
+region increases over time.
+
+\section{String handling and manipulations}
+
+\R{} has some functions which can be useful for text manipulation. In data analysis
+you will often need to create compound strings out of existing ones or extract 
+information from a string, e.g. a file name.
+ 
+Specifically, we will look at some of the capabilities 
+of the  package \CRANpkg{stringr}. Check out the documentation of this package
+for more string manipulation capabilities.
+
+
+\subsection{Extracting information from a string}
+
+Lets assume we have the following image filename, which contains various information:
+the experimental series, the green color of a protein used and the glucose was used 
+in the cell culture medium:
+
+<<stringHandling >>=
+fName <- "tau138MGFP_Glu.lif - Series004 green_measure.tif"
+@
+
+
+In order to extract the information from the string, we need to split into
+several parts. This is done by defining a splitting pattern. Ideally, the 
+parts of the string are separated by the same character. However, in our
+example this is not the case, we spaces, hyphens,  underscores and dots.
+
+Thus we have to use a so--called regular expression to split up the string.
+A thorough introduction to them is beyond the scope of this lab.
+A nice introduction to them can be found \href{http://www.zytrax.com/tech/web/regex.htm}{here}.
+They allow for a very flexible description of text patterns. For example, the square brackets
+in the pattern ``\lbrack - \textunderscore   .\rbrack '' mean to select any of the three
+characters in within the brackets. This result of the splitting operation is 
+a list that contains a vector for each string we splitted.
+
+
+%\begin{verbatim}
+
+%\end{verbatim}
+
+<<stringSplit, dependson="stringHandling" >>=
+fNameSplit <- str_split(string=fName, pattern = "[ - _ .]")
+fNameSplit 
+@
+
+
+\subsection{Creating compound strings from input strings}
+
+
+Now that we splitted the filename, we might wan to extract the information 
+and create a new string. This is done with the functions \Rfunction{paste}
+and \Rfunction{paste0} which paste strings together with or without spaces.
+For example, we can create a new string containing the
+series, the color and medium condition, separated by double--hyphens.
+In order to do this, we supply the vector with the corresponding entries and set
+a character string to separate them with the \Rcode{collapse} option.
+
+<<stringJoin, dependson="stringSplit" >>=
+fNameSplit[[1]][c(5,2,6)]
+paste0(fNameSplit[[1]][c(5,2,6)], collapse = "--")
+@
+
+
+
+\section{Case studies in data handling*}
+
+
+\subsection{Extracting information from file names}
+
+The first data example was provided by Michele Christovoa (M\"uller lab) and
+contains .csv files with image feature readouts from Microscopy. The image file 
+names given  in the first column of the table contain information about the medium
+(glucose or galactose) and about the color of the protein (green or red).
+
+The goal is now to extract this information from the table in an automated
+fashion.
+
+<<readDataMichele>>=
+cellImaging <- read.csv(url("http://www-huber.embl.de/users/klaus/BasicR/DataCellImaging/cellImaging.csv"))
+
+head(cellImaging)  
+
+@
+
+
+\subsubsection*{Exercise: Handling cell imaging data}
+
+\begin{enumerate}[label=(\emph{\alph*})] 
+
+\item Use the file names in the  column \Rcode{Label} to extract the color 
+(green or red) and the medium (Glu or Gal). HINT: Use an appropriate split--
+command and then use \Rfunction{sapply} with a custom function 
+to extract the info!
+
+
+\item Add  columns  \Rcode{GalGlu} and \Rcode{GreenRed} with the function \Rfunction{mutate}
+  to the data frame that code for membership of the cell in each of the four
+  groups
+
+HINT: Use the function \Rfunction{str\textunderscore match} on the file names and an \Rcode{ifelse}
+statement. Be careful: \Rfunction{str\textunderscore match}  returns a matrix so subset the result
+accordingly.
+
+\item Group the data by the columns \Rcode{GalGlu} and \Rcode{GreenRed} and
+then compute the mean \Rcode{Mean} per group using \Rfunction{summarize}.
+
+
+\end{enumerate}
+
+
+\subsection{Organizing data that comes in several files}
+
+The next example data set was provided by Iana Kalinina from the Nedelec/Merten labs.
+It consists of several proteomics experiments where always three samples have been
+analyzed in one experiment. The samples correspond either to an extract from 
+a mixture of eggs or single eggs. You can download the data \href{http://www-huber.embl.de/users/klaus/BasicR/DataProteomics/DataProteomics.zip}{here}.
+
+
+We extract it to a folder ``DataProteomics'' in the current working directory.
+In order to get an overview of the data, we list all the files
+
+<<getDataProteomics>>=
+dataDir <- file.path("DataProteomics")
+list.files(dataDir)
+@
+
+The  proteomics data for the individual experiments is stored in separate .csv
+files. The file  ProteinList.csv contains the protein annotation and the file 
+SampleLegend.csv a description of the samples of the experiments. All of the files
+that contain the actual data have the suffix ``ratios''. Thus we extract them first.
+Then, we extract the names of the experiments from them with the function
+\Rfunction{str\textunderscore sub}.
+
+<<handleP1, dependson="getDataProteomics">>=
+
+# get the proteomics data files
+protData <- file.path(dataDir, list.files(dataDir, pattern="ratio"))
+protData
+namesExp <- str_sub(sapply(str_split(protData, "_"), "[", 1), 16)
+namesExp
+
+
+
+@
+
+We now import the data using \Rfunction{lapply} on the file names and
+name the columns in the imported table with the  appropriate sample number.
+
+
+
+<<importP, dependson="handleP1">>=
+
+protData  <- lapply(protData, read.csv, header = FALSE)
+protData  <- lapply(protData, function(x){ names(x) = c("S1", "S2", "S3");x} )
+
+#paste0(rep(namesExp,3), c("S1", "S2", "S3"), sep="_")
+
+names(protData) <- namesExp 
+str(protData, list.len=3)
+
+@
+
+
+We then add the experiment identifier as names to the list and column--bind the
+tables recursively to each other using the \Rfunction{Reduce} function.
+Since now the columns for different experiments 
+have the same name, we add the experiment identifiers
+to them by pasting the identifier to the column name. The \Rfunction{outer}
+here combines each element of the vector of the experiment names with 
+each sample name.
+
+<<joinP, dependson="importP">>=
+
+## join individual data frames together
+protData <- Reduce("cbind", protData)
+protData[1:5,1:8]
+
+
+## add experiment names to samples
+names(protData) <- as.vector(t(outer(namesExp, c("S1", "S2", "S3"), 
+                                     function(x,y) paste0(x,"_",y))))
+protData[1:5,1:8]
+
+@
+
+
+In order to have the annotation of the samples and the proteins, we also 
+import this data now.
+
+<<importMetadata, dependson="joinP">>=
+
+sampleMetadata <- read.csv(file.path(dataDir, "SampleLegend.csv"),
+                           header=T, skip=1)
+names(sampleMetadata)[3:5] = c("S1", "S2", "S3")
+sample_n(sampleMetadata, 10)
+
+# load protein identifiers
+proteinList <-  read.csv(file.path(dataDir, "ProteinList.csv"),
+                           header=T, skip=0)
+sample_n(proteinList,10)
+@
+
+We now add the protein accessions as row names to the data and tidy
+the sample table in such a way that we have one line per unique sample.
+
+<<joinMeta, dependson="importMetadata">>=
+
+## add protein names as rownames
+rownames(protData) <- proteinList$Accession
+
+# modify sample metadata to have one line per sample
+sampleMetadata <- gather(sampleMetadata, key = "sample", value= "type", S1:S3)
+sampleMetadata <-  mutate(sampleMetadata, 
+                                sampleID = paste0(sample.name, "_", sample))
+sampleMetadata <- arrange(sampleMetadata, sampleID)
+
+
+# sanity check
+all(sampleMetadata$sampleID == names(protData))
+
+
+sampleMetadata 
+@
+
+We now have created a tidy data table from the input data that we can use for
+downstream analysis.
+
+<<showProt, dependson="joinMeta">>=
+sample_n(protData, 10)
+@
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\section{Answers to exercises}
+
+
+
+
+\subsubsection*{Exercise: Bodyfat Data }
+
+\begin{enumerate}[label=(\emph{\alph*})] 
+\item Calculate mean and sd for all the variables in the data set. HINT: Use an appropriate \texttt{apply} function.
+
+\item Find the indexes of all men in the data set that are relatively small, i.e, who are less than \texttt{mean(height) - sd(height)} tall.
+\item Compute a similar index for weight, i.e. find the light people.
+\item Find the small and light people, i.e. find the intersection of the two index-sets. Use the logical operator \Robject{\&}.
+and .
+\end{enumerate}
+
+
+\subsubsection*{Solution: Bodyfat Data }
+<<sol-bodyfat,   echo = TRUE, results='hide'>>=
+#a
+########################################################################
+sapply(bodyfat, mean)
+sapply(bodyfat, sd)
+
+#b
+########################################################################
+small.idx <-  bodyfat$height < mean(bodyfat$height) - sd(bodyfat$height)
+subset(bodyfat, small.idx )
+## or
+filter(bodyfat, small.idx)
+
+#c
+########################################################################
+light.idx <-  bodyfat$weight < mean(bodyfat$weight) - sd(bodyfat$weight)
+subset(bodyfat, light.idx)
+## or
+filter(bodyfat, light.idx)
+
+#d small and light people
+########################################################################
+small.and.light.idx  <- small.idx & light.idx
+subset(bodyfat, small.and.light.idx)
+## or
+filter(bodyfat, small.idx, light.idx)
+@
+
+
+\xhrulefill{BiocBlue}{1pt}
+
+\subsubsection*{Exercise: HTS handling}
+
+\begin{enumerate}[label=(\emph{\alph*})]
+\item load the HTS data from\\
+
+\url{http://www-huber.embl.de/users/klaus/BasicR/HTSdata.RData}. \\
+
+\item Compute the mean (function \Rfunction{mean}) and
+standard deviation (function \Rfunction{sd}) of the 
+cell number for every single plate.
+
+\item Using the function \Rfunction{identity} in connection with
+the dot operator and the \Rfunction{do}, create a list of vectors 
+containing only the non--infinite transport ratios 
+for every single plate, replacing the non-finite ratios by zero. 
+
+HINT: Use  the function \Rfunction{is.finite} as well as an \Robject{ifelse} command.
+
+\end{enumerate}
+
+\subsubsection*{Solution: HTS handling}
+<<HTSscreen-solution,   echo = TRUE, results='hide'>>=
+#a
+########################################################################
+load(url("http://www-huber.embl.de/users/klaus/BasicR/HTSdata.RData"))
+
+#b 
+########################################################################
+HTS.n.cs <-  HTSdata %>% 
+group_by(plate, replicate) %>% 
+summarize(mean.CN = mean(CellNumber, na.rm = T),  
+          sd.CN = sd(CellNumber, na.rm = T)) 
+HTS.n.cs
+
+#c
+########################################################################
+TransR <- HTSdata
+  
+TransR$TransR <- ifelse(is.finite(TransR$TransR), TransR$TransR ,0)
+
+TransRlist <-  TransR %>% 
+group_by(plate, replicate)  %>%
+select(TransR)  %>%
+do(TRlist = identity(.)) 
+
+TransRlist$TRlist[[1]]
+
+
+@
+
+
+\xhrulefill{BiocBlue}{1pt}
+
+\subsubsection*{Exercise: Handling cell imaging data}
+
+\begin{enumerate}[label=(\emph{\alph*})] 
+
+\item Use the file names in the  column \Rcode{Label} to extract the color 
+(green or red) and the medium (Glu or Gal). HINT: Use an appropriate split--
+command and then use \Rfunction{sapply} with a custom function 
+to extract the info!
+
+
+\item Add  columns  \Rcode{GalGlu} and \Rcode{GreenRed} with the function \Rfunction{mutate}
+  to the data frame that code for membership of the cell in each of the four
+  groups
+
+HINT: Use the function \Rfunction{str\textunderscore match} on the file names and an \Rcode{ifelse}
+statement. Be careful: \Rfunction{str\textunderscore match}  returns a matrix so subset the result
+accordingly.
+
+\item Group the data by the columns \Rcode{GalGlu} and \Rcode{GreenRed} and
+then compute the mean \Rcode{Mean} per group using \Rfunction{summarize}.
+
+
+\end{enumerate}
+
+
+\subsubsection*{Solution:  Handling cell imaging data}
+<<imagingDataSol,  dependson="readDataMichele",  echo = TRUE, results='hide'>>=
+#a
+
+labelInfo <- str_split(string=cellImaging$Label, pattern = "[ - _ .]")
+extractedInfo <- sapply(labelInfo, 
+                        function(x){x[c(5,2,6)]})
+
+extractedInfo[, 1:5]
+
+#b
+
+## add columns to the data taht give the categories
+
+cellImaging <- mutate(cellImaging, GreenRed=ifelse(is.na(str_match(Label, "green")[,1]), 
+                                                   "Red", "Green"),
+              GalGlu=ifelse(is.na(str_match(Label, "Gal")[,1]), "Glu", "Gal"))
+## check variable types
+glimpse(cellImaging)           
+
+#c
+
+## group by category and get the mean
+cellImaging %>% 
+  group_by(GreenRed, GalGlu) %>%
+  summarize(mean(Mean))    
+
+
+@
+
+
+
+\subsubsection*{Exercise: Handling the Golub data}
+
+
+\begin{enumerate}[label=(\emph{\alph*})] 
+
+\item Print the gene expression values of Gene CCND3 for all AML patients using the factor
+\Robject{gol.fac}.
+
+\item For many types of computations it is very useful to combine a factor with
+the apply functionality: Use an apply function to compute the mean gene expression
+over the ALL and AML patients for each of the genes. 
+
+
+\item Order the data matrix according to the mean expression values for ALL patients
+in decreasing order and give the names of the genes with largest mean expression value for ALL patients. 
+
+\end{enumerate}
+
+
+\subsubsection*{Solution:  Handling the Golub data}
+<<inspect-golub,   echo = TRUE, results='hide'>>=
+#a
+########################################################################
+golub[1042,gol.fac=="AML"]
+#b
+########################################################################
+meanALL <- apply(golub[,gol.fac=="ALL"], 1, mean)
+meanAML <- apply(golub[,gol.fac=="AML"], 1, mean)
+
+#c
+########################################################################
+head(meanALL[order(meanALL, decreasing = TRUE)], 100)
+head(golub[order(meanALL, decreasing = TRUE),  ], 20)
+
+
+(golub.gnames[order(meanALL, decreasing = TRUE),2])[1:3]
+@
+
+
+\xhrulefill{BiocBlue}{1pt}
+
+\subsubsection*{Exercise: Handling Bioconductor expression sets}
+
+
+\begin{enumerate}[label=(\emph{\alph*})] 
+
+\item obtain sample expression set object from the \Biocpkg{Biobase} Bioconductor
+package using \Rfunction{data(sample.ExpressionSet)} and extract 
+the contained gene expression data. Checkout the ``vignette'' on expression
+sets of the package \Biocpkg{Biobase} via \Rcode{browseVignettes("Biobase")}
+to learn more about expression sets in \R{}.
+
+Use the function 
+\Rfunction{slotNames()} to obtain an overview of the elements or "slots" of
+the object.
+
+\item Extract a description of the experiment from the object. Which variables
+have been measured on which samples? Is there any metadata on the variables?
+
+\item Which microarray was used in the experiment? Which "features" (probes) 
+are  measured?
+
+\item How many control probes are contained in the data set?
+HINT: Their names starts with "AFFX", use the function \Rfunction{grep} 
+to obtain them. They are usually filtered out prior to further analysis.
+
+\item Find out how to obtain a \Robject{phenoData} table, i.e. a 
+table containing the sample annotation.
+
+\end{enumerate}
+
+
+
+\subsubsection*{Solution: Handling Bioconductor expression sets}
+<<handle-expression-sets,   echo = TRUE, results='hide'>>=
+#a
+########################################################################
+library(Biobase)
+data(sample.ExpressionSet)
+sample.ExpressionSet
+exprs(sample.ExpressionSet)
+slotNames(sample.ExpressionSet)
+
+#b
+########################################################################
+varLabels(sample.ExpressionSet)
+sampleNames(sample.ExpressionSet)
+varMetadata(sample.ExpressionSet)
+
+#c
+########################################################################
+annotation(sample.ExpressionSet)
+featureNames(sample.ExpressionSet)
+
+#d
+########################################################################
+controls <- grep("AFFX", featureNames(sample.ExpressionSet), value = TRUE)
+str(controls)
+
+#e
+########################################################################
+phenoData(sample.ExpressionSet)
+head(pData(sample.ExpressionSet))
+@
+
+
+\xhrulefill{BiocBlue}{1pt}
+
+\section*{Session Info}
+
+<< sessionInfo, cache=FALSE, results='asis'>>=
+toLatex(sessionInfo())
+@
+
+
+\end{document}
