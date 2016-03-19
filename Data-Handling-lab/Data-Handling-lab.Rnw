@@ -79,28 +79,36 @@ pasilla_se <- DESeqDataSetFromMatrix(countData = countData,
 
 library("TxDb.Dmelanogaster.UCSC.dm3.ensGene")
 
+ids_pasilla <- names(rowRanges(pasilla_se))
+
+#select("TxDb.Dmelanogaster.UCSC.dm3.ensGene", keys = ids_pasilla,
+#       keytype = "GENEID",
+#       )
+
 dm_genes <- transcriptsBy(TxDb.Dmelanogaster.UCSC.dm3.ensGene, by = "gene")
 
-# get indeces of the genes from the SE object in the annotation object
-idx_se_in_dm_genes <- match(names(rowRanges(pasilla_se)), names(dm_genes))
+# add missing gene IDs to dm_genes
+missing_ids <- setdiff(ids_pasilla, names(dm_genes))
 
-# replace NAs with NULLs
-#idx_se_in_dm_genes <- ifelse(is.na(idx_se_in_dm_genes), NULL, idx_se_in_dm_genes)
+dm_genes <- c(dm_genes, rowRanges(pasilla_se)[missing_ids])
 
-# test <- map(seq_along(idx_se_in_dm_genes), function(x){
-#   if(is.na(x)){
-#   return(x)
-#   }
-#   dm_genes[[x]]
-# })
+idx_se_in_dm_genes <- match(ids_pasilla, names(dm_genes))
 
-dm_genes_pasilla <- dm_genes[]
+# sanity check whether there is a missing match
+any(is.na(idx_se_in_dm_genes))
 
-dm_genes[sample(length(dm_genes), 5)]
+# sanity check whether gene id_s match
+all.equal(ids_pasilla, names(dm_genes[idx_se_in_dm_genes]))
 
-rowRanges(pasilla_se) <- dm_genes[match(rowRanges(pasilla_se), names(dm_genes)]
+# Finally annotate the ranges
+rowRanges(pasilla_se) <- dm_genes[idx_se_in_dm_genes]
+
+rowRanges(pasilla_se)[sample(length(ids_pasilla), 5)]
+
+#names(rowRanges(pasilla_se))[100] = "XXX"
+
+all.equal(ids_pasilla, names(rowRanges(pasilla_se)))
 @
-%
 
 
 \section{Introduction}
