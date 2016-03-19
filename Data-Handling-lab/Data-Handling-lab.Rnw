@@ -115,7 +115,9 @@ all.equal(ids_pasilla, names(rowRanges(pasilla_se)))
 
 \R{} offers a wide range of data manipulation tools that allow you to handle, compute
 on and reshape data very efficiently efficiently. We first review basic data
-handling techniques.
+handling techniques. Many of the techniques discussed in this lab are very well
+elaborated on in the upcoming book "R for data science" available on this \href{http://r4ds.had.co.nz/iteration.html#the-map-functions}{website}.
+
 
 
 \section{Review of data handling with \R{}}
@@ -334,10 +336,44 @@ a["b"]
 
 Looping over a list and doing something to each element is a very  common operation
 in R. Unfortunately, the basic R functions like \Rfunction{apply, sapply, lapply}
+do neither offer a consistent interface nor a reliable return type.
 
-that the purrr package provides a family of functions to do it for you. Each function always returns the same type of output so there are six variations based on what sort of result you want:
+The \CRANpkg{purrr} package provides a family of \Rfuntion{map_*} functions to
+to provide a consistent interface to list apply functions. They are called \Rfuntion{map_*}
+since each steps consists of ``mapping'' a list value to a result. Detailed
+information on them can be found
+\href{http://r4ds.had.co.nz/iteration.html#the-map-functions}{on this website}.
 
-    map() returns a list.
+Each function always returns the same type of output so there variations based
+on what sort of result you want. Each function takes a list as input, applies
+a function to each piece, and then returns a new vector that’s the same length
+as the input. The type of the vector is determined by the specific map function.
+Usually you want to use the most specific available, using the default
+\Rfunction{map()} only as a fallback when there is no specialized
+equivalent available. Since a \Robject{data.frame} is just a special kind of list,
+We can use e.g. to compute the means of all the variables using \Rfuction{map_dbl}
+that is guaranteed to return a double value:
+
+<<bodyfat_map, dependson = "loadBodyfat" >>=
+head(map_dbl(bodyfat, mean))
+
+@
+
+The mapping functions have additional convenience feature like the automatic
+creation of simple functions as well as functions like \Rfunction{flatten} to
+remove a level of the hierarchy of the list (similar to \Rfunction{unlist}).
+
+If you specify and index instead of a function, it will extract the respective
+element, in our example the fifth line of the data set.
+
+<<bodyfat_ex_element, dependson = "loadBodyfat">>=
+head(map_dbl(bodyfat, 5))
+
+head(bodyfat[5, ])
+@
+
+This convenience function can of course become very handy with nested
+and named lists.
 
 \section{Handling complex objects in \R{}: microrarray data*}
 So far, we have only been concerned with the handling of very simple objects
@@ -499,6 +535,9 @@ to obtain them. They are usually filtered out prior to further analysis.
 table containing the sample annotation.
 
 \end{enumerate}
+
+
+\subsection{Bioconductor GRanges and summarized experiments}
 
 
 \section{Advanced data handling with \CRANpkg{dplyr} verbs }
