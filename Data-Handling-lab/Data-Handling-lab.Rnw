@@ -79,35 +79,7 @@ pasilla_se <- DESeqDataSetFromMatrix(countData = countData,
 
 library("TxDb.Dmelanogaster.UCSC.dm3.ensGene")
 
-ids_pasilla <- names(rowRanges(pasilla_se))
 
-#select("TxDb.Dmelanogaster.UCSC.dm3.ensGene", keys = ids_pasilla,
-#       keytype = "GENEID",
-#       )
-
-dm_genes <- transcriptsBy(TxDb.Dmelanogaster.UCSC.dm3.ensGene, by = "gene")
-
-# add missing gene IDs to dm_genes
-missing_ids <- setdiff(ids_pasilla, names(dm_genes))
-
-dm_genes <- c(dm_genes, rowRanges(pasilla_se)[missing_ids])
-
-idx_se_in_dm_genes <- match(ids_pasilla, names(dm_genes))
-
-# sanity check whether there is a missing match
-any(is.na(idx_se_in_dm_genes))
-
-# sanity check whether gene id_s match
-all.equal(ids_pasilla, names(dm_genes[idx_se_in_dm_genes]))
-
-# Finally annotate the ranges
-rowRanges(pasilla_se) <- dm_genes[idx_se_in_dm_genes]
-
-rowRanges(pasilla_se)[sample(length(ids_pasilla), 5)]
-
-#names(rowRanges(pasilla_se))[100] = "XXX"
-
-all.equal(ids_pasilla, names(rowRanges(pasilla_se)))
 @
 
 
@@ -180,12 +152,13 @@ subset(sampleVector, sampleVector < 6 | names(sampleVector) == "Bob")
 Very often, the data structure you are looking at has a multidimensional
 structure, e.g. is data.frame or a list. Here, access works in exactly the
 same way but in two dimensions. We use a small patients data set as an example.
-We use the function \Rfunction{read\textunderscore csv} from the \CRANpkg{readr} package that provides
-consistent and fast data import functions.
+We use the function \Rfunction{read\textunderscore csv} from the \CRANpkg{readr}
+package that provides consistent and fast data import functions that do
+not depend on your locale settings and option such as stringsAsFactors.
 
 
 <<multiDAEx >>=
-pat<-read.csv("http://www-huber.embl.de/users/klaus/BasicR/Patients.csv")
+pat<-read_csv("http://www-huber.embl.de/users/klaus/BasicR/Patients.csv")
 pat
 pat[1,c(1:3)]
 pat["P1",]
@@ -338,8 +311,9 @@ Looping over a list and doing something to each element is a very  common operat
 in R. Unfortunately, the basic R functions like \Rfunction{apply, sapply, lapply}
 do neither offer a consistent interface nor a reliable return type.
 
-The \CRANpkg{purrr} package provides a family of \Rfuntion{map_*} functions to
-to provide a consistent interface to list apply functions. They are called \Rfuntion{map_*}
+The \CRANpkg{purrr} package provides a family of \Rfunction{map\textunderscore *} functions to
+to provide a consistent interface to list apply functions. They are called
+\Rfunction{map\textunderscore *}
 since each steps consists of ``mapping'' a list value to a result. Detailed
 information on them can be found
 \href{http://r4ds.had.co.nz/iteration.html#the-map-functions}{on this website}.
@@ -351,7 +325,7 @@ as the input. The type of the vector is determined by the specific map function.
 Usually you want to use the most specific available, using the default
 \Rfunction{map()} only as a fallback when there is no specialized
 equivalent available. Since a \Robject{data.frame} is just a special kind of list,
-We can use e.g. to compute the means of all the variables using \Rfuction{map_dbl}
+We can use e.g. to compute the means of all the variables using \Rfunction{map\textunderscore dbl}
 that is guaranteed to return a double value:
 
 <<bodyfat_map, dependson = "loadBodyfat" >>=
@@ -539,6 +513,66 @@ table containing the sample annotation.
 
 \subsection{Bioconductor GRanges and summarized experiments}
 
+The Bioconductor calls \Biocpkg{SummarizedExperiment} can be see as
+an ExpressionSet variant for sequencing experiments. The feature data
+(now called rowRanges) contains \Biocpkg{GenomicRanges} that represent
+genomic information on features assayed. In the simplest case, these are
+the genomic coordinates of the features. The \Biocpkg{GenomicRanges} offers
+a very flexible and nice framework for working with genomic data. A summary
+of its capabilities is given in the \href{http://doi.org/10.1371/journal.pcbi.1003118
+}{article on it}, as well  as in \href{http://bioconductor.org/packages/3.2/bioc/vignettes/GenomicRanges/inst/doc/GRanges_and_GRangesList_slides.pdf}{this presentation}.
+
+Here we look at simple use case: We start from a drosophila
+RNA--Seq data set, \Biocexptpkg{pasilla},
+which contains only the Flybase gene identifiers and then add the annotation
+of the corresponding transcripts.
+
+We obtain this annotation from the
+\Biocannopkg{TxDb.Dmelanogaster.UCSC.dm3.ensGene}. Since the creation of
+the pasilla data set dates back to 2012 or so, some gene ids are no longer
+present in the current annotation and we have to tackle them so that the matching
+of the two id sets works.
+
+<<pasilla>>=
+pasilla_se
+
+# phenoData
+colData(pasilla_se)
+
+# featureData
+rowRanges(pasilla_se)
+
+ids_pasilla <- names(rowRanges(pasilla_se))
+
+# get the transcripts by genes
+dm_genes <- transcriptsBy(TxDb.Dmelanogaster.UCSC.dm3.ensGene, by = "gene")
+
+dm_genes
+
+# add missing gene IDs to dm_genes
+missing_ids <- setdiff(ids_pasilla, names(dm_genes))
+dm_genes <- c(dm_genes, rowRanges(pasilla_se)[missing_ids])
+
+# match the two sets
+idx_se_in_dm_genes <- match(ids_pasilla, names(dm_genes))
+
+# sanity check whether there is a missing match
+any(is.na(idx_se_in_dm_genes))
+
+# sanity check whether gene id_s match
+all.equal(ids_pasilla, names(dm_genes[idx_se_in_dm_genes]))
+
+# finally annotate the ranges
+rowRanges(pasilla_se) <- dm_genes[idx_se_in_dm_genes]
+
+# sample ranges to preview the data
+rowRanges(pasilla_se)[sample(length(ids_pasilla), 5)]
+
+# another sanity check
+all.equal(ids_pasilla, names(rowRanges(pasilla_se)))
+
+@
+
 
 \section{Advanced data handling with \CRANpkg{dplyr} verbs }
 
@@ -593,6 +627,7 @@ You can use other boolean operators explicitly as in :
 ## all samples with age of 40 or 60
 
 head(filter(bodyfat, age == 40 | age == 60 ), 3)
+
 tail(filter(bodyfat, age == 40 | age == 60 ), 3)
 @
 
@@ -655,9 +690,9 @@ a specific package.)
 For example, going to the patients data, we can easily calculate a BMI column
 using  \Rfunction{mutate}:
 <<mutate-example>>=
-pat<-read.csv("http://www-huber.embl.de/users/klaus/BasicR/Patients.csv")
-pat$Weight[2] = mean(pat$Weight, na.rm=TRUE)
-mutate(pat, BMI = Weight / Height^2)
+pat <- read_csv("http://www-huber.embl.de/users/klaus/BasicR/Patients.csv")
+pat$Weight[2] <- mean(pat$Weight, na.rm=TRUE)
+mutate(pat, BMI <- Weight / Height^2)
 @
 
 \subsection{Summaries with \Rfunction{summarize()}}
@@ -733,7 +768,7 @@ called VSVG from the ER to the golgi and then to the plasma membrane.
 Here we look at 3 plates and all their replicates from the screen, the data
 contains annotation information, (e.g. plate number, well number, well row and column etc.)
 and the columns \Robject{TransR.n} (for normalized transport ratio) which
-is  a measure indicating the transport success as well as \Robject{CellNumber(.n)} containing
+is  a measure indicating the transport success as well as \Robject{CellNumber.n} containing
 the number of cells per spot. The transport ratio is the ratio of intracellular VSVG
 protein over VSVG protein exposed on the cell surface.
 
@@ -776,16 +811,16 @@ to the plate numbers, we can use the following command:\\
 
 
 <<split-example>>=
-split.HTS <- group_by(HTSdata, plate)
-split.HTS
+split_HTS <- group_by(HTSdata, plate)
+split_HTS
 @
 We get back a \Robject{grouped\textunderscore df}, which is a special class in \CRANpkg{dplyr}
 that is also a \Rclass{data.frame}. We can also split by single plates
 
 
 <<split-example-2>>=
-split.HTS.rep  <-  group_by(HTSdata, plate, replicate)
-split.HTS.rep
+split_HTS_rep  <-  group_by(HTSdata, plate, replicate)
+split_HTS_rep
 @
 
 We can now make full use of the  \Rfunction{summarize()}
@@ -795,8 +830,8 @@ per single plate using the grouped data frame just obtained.
 
 
 <<summarize-example>>=
-HTS.cellNumbers  <- summarize(split.HTS.rep, mean.CN = mean(CellNumber, na.rm = T))
-HTS.cellNumbers
+HTS_cellNumbers  <- summarize(split_HTS_rep, mean_CN = mean(CellNumber, na.rm = T))
+HTS_cellNumbers
 @
 
 We see that plate 152 has a lower cell number than the other two plates on average.
@@ -804,10 +839,10 @@ It is also handy to use custom functions, for example computing the ratio of mea
 and median cell number for every plate:
 
 <<custom function-example>>=
-HTS.skew <- summarize(split.HTS.rep,
-HTS.CN.skew = mean(CellNumber, na.rm = T) / median(CellNumber, na.rm = T))
+HTS_skew <- summarize(split_HTS_rep,
+HTS_CN_skew = mean(CellNumber, na.rm = T) / median(CellNumber, na.rm = T))
 
-HTS.skew
+HTS_skew
 @
 
 
@@ -816,9 +851,9 @@ summarizing peels of one level of grouping, thus we can now easily
 compute a mean skew per plate.
 
 << peeling example>>=
-plate.HTS.skew <- summarize(HTS.skew, mean.CN.skew = mean(HTS.CN.skew))
+plate_HTS_skew <- summarize(HTS_skew, mean_CN_skew = mean(HTS_CN_skew))
 
-plate.HTS.skew
+plate_HTS_skew
 @
 
 \subsection{Other useful functions }
@@ -869,7 +904,7 @@ summarize(HTSdata, n_distinct(plate) )
 filter(
   summarize(
       group_by(HTSdata, plate),
-      rep.per.plate = n_distinct(replicate)
+      rep_per_plate = n_distinct(replicate)
       )
   , plate > 15)
 @
@@ -922,7 +957,7 @@ summarize(HTSdata, n_distinct(plate) )
 
 HTSdata %>%
 group_by(plate)  %>%
-summarize(rep.per.plate = n_distinct(replicate)) %>%
+summarize(rep_per_plate = n_distinct(replicate)) %>%
 filter(plate > 15)
 
 @
@@ -963,9 +998,9 @@ due to the usage of lists, there are now no duplicated label columns.
 <<>>=
 Preview <- HTSdata %>%
 group_by(plate, replicate)  %>%
-do(plate.preview = head(.,2))
+do(plate_preview = head(.,2))
 
-Preview$plate.preview[[1]]
+Preview$plate_preview[[1]]
 @
 
 \subsubsection*{Exercise: HTS data handling}
@@ -1032,7 +1067,7 @@ This data and the exercise ideas were provided by Lars Velten (Steinmetz lab).
 We first  load  the dataset.
 
 <<load-protein-data>>=
-proteins <- read.csv("http://www-huber.embl.de/users/klaus/BasicR/proteins.csv")[,-1]
+proteins <- read_csv("http://www-huber.embl.de/users/klaus/BasicR/proteins.csv")
 sample_n(proteins, 4)
 proteins_pMek <- subset(proteins, Target == "pMEK")
 proteins_pMek_sub <- subset(proteins_pMek, Condition == "10ng/mL HGF")
@@ -1139,8 +1174,9 @@ of the transcription factor to the promoters of the genes.
 The data has been provided by Elisabeth Zielonka from the Hentze lab.
 
 <<TSSplotPrep >>=
-covs <- read.csv(url("http://www-huber.embl.de/users/klaus/BasicR/DataTSS/covs.csv"))
-names(covs) <- c("geneID", setdiff(seq(-3000,3000),0), "time")
+covs <- read_csv(url("http://www-huber.embl.de/users/klaus/BasicR/DataTSS/covs.csv"),
+                progress = FALSE)
+names(covs) <- c("geneID", setdiff(seq(-3000, 3000), 0), "time")
 sample_n(covs,10)[,1:5]
 @
 
@@ -1154,18 +1190,18 @@ version of the curves.
 
 <<TSSplot, dependson="TSSplotPrep", fig.show='asis'>>=
 
-dataGathered <- covs %>%
-    gather(key = "posRelToTSS", value = "coverage", -geneID, -time)
+data_gathered <- covs %>%
+    gather(key = "pos_rel_to_tss", value = "coverage", -geneID, -time)
 
-dataGathered$posRelToTSS <- as.integer(dataGathered$posRelToTSS)
+data_gathered$pos_rel_to_tss <- as.integer(data_gathered$pos_rel_to_tss)
 
-sample_n(dataGathered, 10)
+sample_n(data_gathered, 10)
 
-covs_collapsed <- dataGathered %>%
-        group_by(time, posRelToTSS) %>%
+covs_collapsed <- data_gathered %>%
+        group_by(time, pos_rel_to_tss) %>%
                   summarize(coverageC = mean(coverage))
 
-qplot(posRelToTSS, coverageC,  color = time,
+qplot(pos_rel_to_tss, coverageC,  color = time,
       data=covs_collapsed, geom="smooth")
 
 @
@@ -1215,8 +1251,8 @@ a list that contains a vector for each string we splitted.
 %\end{verbatim}
 
 <<stringSplit, dependson="stringHandling" >>=
-fNameSplit <- str_split(string=fName, pattern = "[ - _ .]")
-fNameSplit
+f_name_split <- str_split(string=fName, pattern = "[ - _ .]")
+f_name_split
 @
 
 
@@ -1232,8 +1268,8 @@ In order to do this, we supply the vector with the corresponding entries and set
 a character string to separate them with the \Rcode{collapse} option.
 
 <<stringJoin, dependson="stringSplit" >>=
-fNameSplit[[1]][c(5,2,6)]
-paste0(fNameSplit[[1]][c(5,2,6)], collapse = "--")
+f_name_split[[1]][c(5,2,6)]
+paste0(f_name_split[[1]][c(5,2,6)], collapse = "--")
 @
 
 
@@ -1252,9 +1288,9 @@ The goal is now to extract this information from the table in an automated
 fashion.
 
 <<readDataMichele>>=
-cellImaging <- read.csv(url("http://www-huber.embl.de/users/klaus/BasicR/DataCellImaging/cellImaging.csv"))
+cell_imaging <- read_csv(url("http://www-huber.embl.de/users/klaus/BasicR/DataCellImaging/cellImaging.csv"))
 
-head(cellImaging)
+head(cell_imaging)
 
 @
 
@@ -1265,11 +1301,11 @@ head(cellImaging)
 
 \item Use the file names in the  column \Rcode{Label} to extract the color
 (green or red) and the medium (Glu or Gal). HINT: Use an appropriate split--
-command and then use \Rfunction{sapply} with a custom function
+command and then use \Rfunction{map} with a custom function
 to extract the info!
 
 
-\item Add  columns  \Rcode{GalGlu} and \Rcode{GreenRed} with the function \Rfunction{mutate}
+\item Add  columns  \Rcode{gal\textunderscore glu} and \Rcode{green\textunderscore red} with the function \Rfunction{mutate}
   to the data frame that code for membership of the cell in each of the four
   groups
 
@@ -1277,7 +1313,8 @@ HINT: Use the function \Rfunction{str\textunderscore match} on the file names an
 statement. Be careful: \Rfunction{str\textunderscore match}  returns a matrix so subset the result
 accordingly.
 
-\item Group the data by the columns \Rcode{GalGlu} and \Rcode{GreenRed} and
+\item Group the data by the columns \Rcode{gal\textunderscore glu} and
+\Rcode{green\textunderscore red} and
 then compute the mean \Rcode{Mean} per group using \Rfunction{summarize}.
 
 
@@ -1296,12 +1333,12 @@ We extract it to a folder ``DataProteomics'' in the current working directory.
 In order to get an overview of the data, we list all the files
 
 <<getDataProteomics>>=
-dataDir <- file.path("DataProteomics")
-list.files(dataDir)
+data_dir <- file.path("DataProteomics")
+list.files(data_dir)
 @
 
 The  proteomics data for the individual experiments is stored in separate .csv
-files. The file  ProteinList.csv contains the protein annotation and the file
+files. The file ProteinList.csv contains the protein annotation and the file
 SampleLegend.csv a description of the samples of the experiments. All of the files
 that contain the actual data have the suffix ``ratios''. Thus we extract them first.
 Then, we extract the names of the experiments from them with the function
@@ -1310,11 +1347,11 @@ Then, we extract the names of the experiments from them with the function
 <<handleP1, dependson="getDataProteomics">>=
 
 # get the proteomics data files
-protData <- file.path(dataDir, list.files(dataDir, pattern="ratio"))
-protData
-namesExp <- str_sub(sapply(str_split(protData, "_"), "[", 1), 16)
-namesExp
+prot_data <- file.path(data_dir, list.files(data_dir, pattern="ratio"))
+prot_data
 
+namesExp <- str_sub(sapply(str_split(prot_data, "_"), "[", 1), 16)
+namesExp
 
 
 @
@@ -1326,36 +1363,12 @@ name the columns in the imported table with the  appropriate sample number.
 
 <<importP, dependson="handleP1">>=
 
-protData  <- lapply(protData, read.csv, header = FALSE)
-protData  <- lapply(protData, function(x){ names(x) = c("S1", "S2", "S3");x} )
+prot_data  <- map_df(prot_data, read_csv, .id = "experiment"
+, col_names = c("S1", "S2", "S3"))
 
-#paste0(rep(namesExp,3), c("S1", "S2", "S3"), sep="_")
+prot_data <- mutate(prot_data, experiment = mapvalues(experiment,
+                   from = unique(experiment), to = namesExp))
 
-names(protData) <- namesExp
-str(protData, list.len=3)
-
-@
-
-
-We then add the experiment identifier as names to the list and column--bind the
-tables recursively to each other using the \Rfunction{Reduce} function.
-Since now the columns for different experiments
-have the same name, we add the experiment identifiers
-to them by pasting the identifier to the column name. The \Rfunction{outer}
-here combines each element of the vector of the experiment names with
-each sample name.
-
-<<joinP, dependson="importP">>=
-
-## join individual data frames together
-protData <- Reduce("cbind", protData)
-protData[1:5,1:8]
-
-
-## add experiment names to samples
-names(protData) <- as.vector(t(outer(namesExp, c("S1", "S2", "S3"),
-                                     function(x,y) paste0(x,"_",y))))
-protData[1:5,1:8]
 
 @
 
@@ -1365,15 +1378,16 @@ import this data now.
 
 <<importMetadata, dependson="joinP">>=
 
-sampleMetadata <- read.csv(file.path(dataDir, "SampleLegend.csv"),
-                           header=T, skip=1)
-names(sampleMetadata)[3:5] = c("S1", "S2", "S3")
-sample_n(sampleMetadata, 10)
+sample_metadata <- read_csv(file.path(data_dir, "SampleLegend.csv"),
+                           skip=1)
+
+names(sample_metadata)[c(1,3:5)] <- c("sample_name", "S1", "S2", "S3")
+sample_n(sample_metadata, 10)
 
 # load protein identifiers
-proteinList <-  read.csv(file.path(dataDir, "ProteinList.csv"),
-                           header=T, skip=0)
-sample_n(proteinList,10)
+protein_list <-  read_csv(file.path(data_dir, "ProteinList.csv"),
+                         skip=0)
+sample_n(protein_list, 10)
 @
 
 We now add the protein accessions as row names to the data and tidy
@@ -1382,27 +1396,24 @@ the sample table in such a way that we have one line per unique sample.
 <<joinMeta, dependson="importMetadata">>=
 
 ## add protein names as rownames
-rownames(protData) <- proteinList$Accession
+prot_data$Accession <- rep(protein_list$Accession, length(namesExp))
 
 # modify sample metadata to have one line per sample
-sampleMetadata <- gather(sampleMetadata, key = "sample", value= "type", S1:S3)
-sampleMetadata <-  mutate(sampleMetadata,
-                                sampleID = paste0(sample.name, "_", sample))
-sampleMetadata <- arrange(sampleMetadata, sampleID)
+sample_metadata <- gather(sample_metadata, key = "sample", value= "type", S1:S3)
+sample_metadata <-  mutate(sample_metadata,
+                                sample_id = paste0(sample_name, "_", sample))
+sample_metadata <- arrange(sample_metadata, sample_id)
 
 
-# sanity check
-all(sampleMetadata$sampleID == names(protData))
 
-
-sampleMetadata
+sample_metadata
 @
 
 We now have created a tidy data table from the input data that we can use for
 downstream analysis.
 
 <<showProt, dependson="joinMeta">>=
-sample_n(protData, 10)
+sample_n(prot_data, 10)
 @
 
 
@@ -1434,6 +1445,11 @@ and .
 sapply(bodyfat, mean)
 sapply(bodyfat, sd)
 
+# or
+
+map_dbl(bodyfat, mean)
+map_dbl(bodyfat, sd)
+
 #b
 ########################################################################
 small.idx <-  bodyfat$height < mean(bodyfat$height) - sd(bodyfat$height)
@@ -1452,7 +1468,7 @@ filter(bodyfat, light.idx)
 ########################################################################
 small.and.light.idx  <- small.idx & light.idx
 subset(bodyfat, small.and.light.idx)
-## or
+# or
 filter(bodyfat, small.idx, light.idx)
 @
 
@@ -1487,11 +1503,11 @@ load(url("http://www-huber.embl.de/users/klaus/BasicR/HTSdata.RData"))
 
 #b
 ########################################################################
-HTS.n.cs <-  HTSdata %>%
+HTS_n_cs <-  HTSdata %>%
 group_by(plate, replicate) %>%
-summarize(mean.CN = mean(CellNumber, na.rm = T),
-          sd.CN = sd(CellNumber, na.rm = T))
-HTS.n.cs
+summarize(mean_CN = mean(CellNumber, na.rm = T),
+          sd_CN = sd(CellNumber, na.rm = T))
+HTS_n_cs
 
 #c
 ########################################################################
@@ -1501,11 +1517,10 @@ TransR$TransR <- ifelse(is.finite(TransR$TransR), TransR$TransR ,0)
 
 TransRlist <-  TransR %>%
 group_by(plate, replicate)  %>%
-select(TransR)  %>%
+dplyr::select(TransR)  %>%
 do(TRlist = identity(.))
 
 TransRlist$TRlist[[1]]
-
 
 @
 
@@ -1522,7 +1537,7 @@ command and then use \Rfunction{sapply} with a custom function
 to extract the info!
 
 
-\item Add  columns  \Rcode{GalGlu} and \Rcode{GreenRed} with the function \Rfunction{mutate}
+\item Add  columns  \Rcode{gal\textunderscore glu} and \Rcode{green\textunderscore red} with the function \Rfunction{mutate}
   to the data frame that code for membership of the cell in each of the four
   groups
 
@@ -1530,7 +1545,8 @@ HINT: Use the function \Rfunction{str\textunderscore match} on the file names an
 statement. Be careful: \Rfunction{str\textunderscore match}  returns a matrix so subset the result
 accordingly.
 
-\item Group the data by the columns \Rcode{GalGlu} and \Rcode{GreenRed} and
+\item Group the data by the columns \Rcode{gal\textunderscore glu} and
+\Rcode{green\textunderscore red} and
 then compute the mean \Rcode{Mean} per group using \Rfunction{summarize}.
 
 
@@ -1541,27 +1557,29 @@ then compute the mean \Rcode{Mean} per group using \Rfunction{summarize}.
 <<imagingDataSol,  dependson="readDataMichele",  echo = TRUE, results='hide'>>=
 #a
 
-labelInfo <- str_split(string=cellImaging$Label, pattern = "[ - _ .]")
-extractedInfo <- sapply(labelInfo,
-                        function(x){x[c(5,2,6)]})
+label_Info <- str_split(string=cell_imaging$Label, pattern = "[ - _ .]")
+extractedInfo <- map_df(label_Info,
+                        function(x){data.frame(series = x[5],
+                                               medium = x[2],
+                                               label = x[6])})
 
-extractedInfo[, 1:5]
+head(extractedInfo)
 
 #b
 
-## add columns to the data taht give the categories
+## add columns to the data thaht give the categories
 
-cellImaging <- mutate(cellImaging, GreenRed=ifelse(is.na(str_match(Label, "green")[,1]),
+cell_imaging <- mutate(cell_imaging, green_red=ifelse(is.na(str_match(Label, "green")[,1]),
                                                    "Red", "Green"),
-              GalGlu=ifelse(is.na(str_match(Label, "Gal")[,1]), "Glu", "Gal"))
+              gal_glu=ifelse(is.na(str_match(Label, "Gal")[,1]), "Glu", "Gal"))
 ## check variable types
-glimpse(cellImaging)
+glimpse(cell_imaging)
 
 #c
 
 ## group by category and get the mean
-cellImaging %>%
-  group_by(GreenRed, GalGlu) %>%
+cell_imaging %>%
+  group_by(green_red, gal_glu) %>%
   summarize(mean(Mean))
 
 
