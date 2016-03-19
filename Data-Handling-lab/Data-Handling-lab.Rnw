@@ -65,6 +65,40 @@ library(stringr)
 library(magrittr)
 library(purrr)
 library(readr)
+library("DESeq2")
+library("pasilla")
+library("Biobase")
+data("pasillaGenes")
+
+countData <- counts(pasillaGenes)
+colData <- pData(pasillaGenes)[,c("condition","type")]
+
+pasilla_se <- DESeqDataSetFromMatrix(countData = countData,
+                                      colData = colData,
+                                      design = ~ condition)
+
+library("TxDb.Dmelanogaster.UCSC.dm3.ensGene")
+
+dm_genes <- transcriptsBy(TxDb.Dmelanogaster.UCSC.dm3.ensGene, by = "gene")
+
+# get indeces of the genes from the SE object in the annotation object
+idx_se_in_dm_genes <- match(names(rowRanges(pasilla_se)), names(dm_genes))
+
+# replace NAs with NULLs
+#idx_se_in_dm_genes <- ifelse(is.na(idx_se_in_dm_genes), NULL, idx_se_in_dm_genes)
+
+# test <- map(seq_along(idx_se_in_dm_genes), function(x){
+#   if(is.na(x)){
+#   return(x)
+#   }
+#   dm_genes[[x]]
+# })
+
+dm_genes_pasilla <- dm_genes[]
+
+dm_genes[sample(length(dm_genes), 5)]
+
+rowRanges(pasilla_se) <- dm_genes[match(rowRanges(pasilla_se), names(dm_genes)]
 @
 %
 
