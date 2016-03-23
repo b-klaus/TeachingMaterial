@@ -1,6 +1,6 @@
 
 % To compile this document
-% graphics.off();rm(list=ls());library('knitr');knit('testing-lab.Rnw');  for(i in 1:2) system('R CMD pdflatex testing-lab.tex'); purl('testing-lab.Rnw')
+% graphics.off();rm(list=ls());library('knitr');knit('testing-lab.Rnw'); purl('testing-lab.Rnw'); for(i in 1:2) system('R CMD pdflatex testing-lab.tex');
 
 
 
@@ -30,7 +30,7 @@ opts_chunk$set(echo=TRUE,tidy=FALSE,include=TRUE,
 \usepackage{mathpazo}
 \usepackage{soul}
 \usepackage{cases}
-\setlength{\parindent}{0cm} 
+\setlength{\parindent}{0cm}
 \usepackage{xhfill}
 \usepackage[labelformat=empty]{caption}
 \providecommand{\abs}[1]{\left\lvert#1\right\rvert}
@@ -69,6 +69,7 @@ library(ALL)
 library(hgu95av2.db)
 set.seed(999)
 library(genefilter)
+library(IHW)
 @
 %
 
@@ -76,17 +77,17 @@ library(genefilter)
 \section{Introduction to statistical hypothesis testing}
 
 In science it is common to ask if two things are different
-Are men taller than women? Is the risk of cancer different in smokers and non-smokers? Is 
-the probability of getting type II different for different genetic backgrounds? Is this 
-gene differentially expressed in cancer? When we make two measurements and compare, we 
-almost always see some difference. But will wee see it again if we measure again? If 
+Are men taller than women? Is the risk of cancer different in smokers and non-smokers? Is
+the probability of getting type II different for different genetic backgrounds? Is this
+gene differentially expressed in cancer? When we make two measurements and compare, we
+almost always see some difference. But will wee see it again if we measure again? If
 someone else measures? Statistical testing can help us answer this question.
 
 Here we deal with questions  related to the statistical testing
 biological hypothesis. Does the mean gene expression over ALL patients
 differ from that over AML patients? That is, does the mean gene expression
 level differ between experimental conditions? Is the mean gene expression
-different from zero?   How can it be tested whether the 
+different from zero?   How can it be tested whether the
 frequencies of nucleotide sequences of two genes are
 different?  What is the probability of a certain micro RNA to have more than a certain
 number of purines?
@@ -94,19 +95,19 @@ number of purines?
 
 Many population parameters are used to define
 families of theoretical distributions. In any research (empirical) setting the
-specific values of such parameters are unknown so that these must be estimated. 
+specific values of such parameters are unknown so that these must be estimated.
 Once estimates are available it becomes possible to statistically test
 biologically important hypotheses. This lab gives several basic
-examples of statistical testing and some of its background. 
+examples of statistical testing and some of its background.
 
-As a conceptual example for a typical testing situation, let $\mu_0$ be a 
+As a conceptual example for a typical testing situation, let $\mu_0$ be a
 number representing the hypothesized population mean by a
 researcher on the basis of experience and knowledge from the field. With
 respect to the population mean the null hypothesis can be formulated as
 $H_0 : \mu = \mu_0$ and the alternative hypothesis as $H_1$ : $\mu \neq \mu_0$ .
-These are two statements of which the latter is the opposite of the first: Either 
-$H_0$ or $H_1$ is true. The alternative hypothesis is true if $H_1 : 
-\mu < \mu_0$ or $H_1 : \mu > \mu_0$ holds true. 
+These are two statements of which the latter is the opposite of the first: Either
+$H_0$ or $H_1$ is true. The alternative hypothesis is true if $H_1 :
+\mu < \mu_0$ or $H_1 : \mu > \mu_0$ holds true.
 This type of alternative hypothesis is called ``two-sided''. In case
 $H_1$ : $\mu > \mu_0$ or $H_1$ : $\mu < \mu_0$, it is called ``one-sided''.
 
@@ -125,12 +126,12 @@ This workflow can be summarized as follows:
 
 
 
-\begin{enumerate} 
+\begin{enumerate}
 \item Set up hypothesis $H_0$ (that you want to reject)
 \item  Find a test statistic $T$ that should be sensitive to
 (interesting) deviations from $H_0$
 \item  Figure out the  null distribution of $T$, the distribution of $T$
-under the assumption that $H_0$ holds 
+under the assumption that $H_0$ holds
 \item  Compute the actual value of $T$ for the data at
 hand
 \item  Compute $p$--value = the probability of observing that
@@ -143,32 +144,46 @@ value, or more extreme, assuming the null distribution.
 \section{The two group comparison as a fundamental example for testing}
 
 
-Imagine a researcher who would like to compare the height of two plant varieties. 
-If she only takes one measurement of the plant height and observes a difference of say 2cm, 
-it is impossible to say whether this difference is due to natural variation. 
-On the other hand, if multiple plants of each variety are measured, and it turns out 
-that the height differences are always somewhere around 2cm, the observed difference 
-is less likely due to chance. This is illustrated in the figure below: 
+Imagine a researcher who would like to compare the height of two plant varieties.
+If she only takes one measurement of the plant height and observes a difference of say 2cm,
+it is impossible to say whether this difference is due to natural variation.
+On the other hand, if multiple plants of each variety are measured, and it turns out
+that the height differences are always somewhere around 2cm, the observed difference
+is less likely due to chance. This is illustrated in the figure below:
 the difference is strong relative to the variability between the measurements.
 
 The data might look like this:
 
 <<plantData>>=
 
+fBar <- function(x){
+    tmp <- mean(x, na.rm = T)
+    data.frame(ymax = tmp, y = tmp, ymin = tmp)
+}
+
 variety1 <- rnorm(10, mean = 5)
 variety2 <- rnorm(10, mean = 7, sd = 1/sqrt(2))
 
-plantData <- data.frame(height  = c(variety1,variety2) , 
+plantData <- data.frame(height  = c(variety1,variety2) ,
                      variety = sort(rep(c("variety1", "variety2"),10)) )
 
 head(plantData)
 
 
-(qplot(variety, height, data = plantData, color=variety, 
-      position=position_jitter(w = 0.3, h = 0), size = I(3), shape = variety) 
-    + scale_color_brewer(palette = "Set1") + ylab("height in cm") +
-      geom_errorbar(stat=  "hline",  colour="black",yintercept="mean", 
-      width=0.6, size=1,aes(ymax=..y.., ymin=..y..)))
+
+(ggplot(aes(x = variety, y = height, color = variety, shape = variety, size = 3),
+        data = plantData)
+
+    + geom_jitter(width = 0.3, height = 0)
+
+
+    + scale_color_brewer(palette = "Set1")
+
+    + ylab("height in cm")
+
+    + geom_errorbar(stat = "summary", width = 0.4,
+                    fun.data = fBar, size = 0.4))
+
 
 
 @
@@ -177,35 +192,35 @@ head(plantData)
 \subsubsection*{Side Note: Technical vs. biological replicates}
 
 When referring to replicates it is important to distinguish between biological and
-technical replicates. Technical replicates refer to experimental samples isolated 
-from one biological sample, e.g. extracting RNA from the cells of a mouse and 
-then preparing 3 sequencing libraries from this while a biological replication means 
-extracting RNA from three different mice for the comparisons of interest. 
-It is not sufficient "to pipette an experiment again" since this is not biological, 
-but merely a ``technical" replication. In general, technical replicates 
-tend to show less variability than biological replicates, thus leading 
-to false positive results.  
+technical replicates. Technical replicates refer to experimental samples isolated
+from one biological sample, e.g. extracting RNA from the cells of a mouse and
+then preparing 3 sequencing libraries from this while a biological replication means
+extracting RNA from three different mice for the comparisons of interest.
+It is not sufficient "to pipette an experiment again" since this is not biological,
+but merely a ``technical" replication. In general, technical replicates
+tend to show less variability than biological replicates, thus leading
+to false positive results.
 
 \subsection{How to test for differences via permutations}
 
-The observed mean difference between the the two varieties 
-is \Sexpr{mean(variety2) - mean(variety1)} cm. How easy would it be 
-for a difference of \Sexpr{mean(variety2) - mean(variety1)} 
-cm minutes to occur just by chance? 
+The observed mean difference between the the two varieties
+is \Sexpr{mean(variety2) - mean(variety1)} cm. How easy would it be
+for a difference of \Sexpr{mean(variety2) - mean(variety1)}
+cm minutes to occur just by chance?
 
 To answer this, we suppose there really is no difference between
 the two groups, that variety1 and variety2 are just labels. So what would
-happen if we assign labels randomly? How often would a difference like 
+happen if we assign labels randomly? How often would a difference like
 \Sexpr{mean(variety2) - mean(variety1)} cm occur?
 
 We'll pool all twenty observations, randomly pick 10 of them to label
 basic and label the rest extended, and compute the difference in means
 between the two groups. We'll repeat that many times, say ten thousand, to
 get the permutation distribution shown below. The observed statistic
-\Sexpr{mean(variety2) - mean(variety1)} cm is also shown; the fraction 
+\Sexpr{mean(variety2) - mean(variety1)} cm is also shown; the fraction
 of the distribution to the right of that value
 is the probability that random labeling would give a difference that
-large. 
+large.
 
 \textbf{In a permutation test, we obtain the null distribution from the data,
 rather than analytically as e.g. in a t--test.}
@@ -221,7 +236,7 @@ rather than analytically as e.g. in a t--test.}
 mDiff <- function(data, group){
   data$group <- NULL
   data$group <- group
-  tmp <-  data %>% 
+  tmp <-  data %>%
     group_by(group)  %>%
     summarize(m = mean(data, na.rm=TRUE))
   as.numeric(tmp[2,"m"] - tmp[1,"m"])
@@ -229,65 +244,67 @@ mDiff <- function(data, group){
 
 
 ## function to compute the permutation test
-permTestTwoGroups <- function(group1, group2, 
+permTestTwoGroups <- function(group1, group2,
                               twoSided = TRUE, permutations = 1e4){
-  
+
   stopifnot(is.numeric(group1),  is.numeric(group2),
              length(group1) > 0,  length(group2) > 0,
              is.vector(group1), is.vector(group2),
             is.logical(twoSided))
- 
-  inputData <- data.frame(data  = c(group1, group2), 
+
+  inputData <- data.frame(data  = c(group1, group2),
                      group = rep(c("group1", "group2"),
                                    c(length(group1), length(group2))))
-                              
+
+  # compute the observed difference between the groups
   obsDiff  <-  mDiff(inputData, inputData$group)
-  
+
   # compute sampling distribution and p--value
-  samplingDist <- c(replicate(as.integer(permutations), 
-                              mDiff(inputData, sample(inputData$group))), 
+  samplingDist <- c(replicate(as.integer(permutations),
+                              mDiff(inputData, sample(inputData$group))),
                               obsDiff)
-  
-  pvalP <- 2*min(1 - ecdf(samplingDist)(abs(obsDiff)), 
+
+  # compute two-sided p-value
+  pvalP <- 2*min(1 - ecdf(samplingDist)(abs(obsDiff)),
                  ecdf(samplingDist)(abs(obsDiff)))
-  
-  
+
+  # create plot of the sampling distribution
   samplingDistPlot <- (qplot(samplingDist, fill = I("orange4"),
                              main = "Sampling distribution mean difference",
-                              binwidth = 0.1) 
+                              binwidth = 0.1)
   +  geom_vline(xintercept = obsDiff, size = 2))
-    
+
   return(list(
     samplingDist = samplingDist,
     samplingDistPlot = samplingDistPlot,
     obsDiff = obsDiff,
     pval = pvalP
   ))
-  
+
 }
 
 @
 
 
 We now compute a difference for each label permutation  and plot it. We compute
-a \textbf{two-sided p-value} by looking how many of the computed differences are less 
+a \textbf{two-sided p-value} by looking how many of the computed differences are less
 than the observed one of \textbf{mean(variety2) - mean(variety1)} (lower p--value) and
 how many are greater than `\textbf{mean(variety2) - mean(variety1)}. The two--sided p--value
 corresponds to a test of the null hypothesis that the mean difference between the two varieties
 is different from zero.
 
-The lower p--value corresponds to a test of the null hypothesis 
+The lower p--value corresponds to a test of the null hypothesis
 that the mean difference is less than zero while the  upper
-p--value corresponds to a test of the null hypothesis 
+p--value corresponds to a test of the null hypothesis
 that the mean difference is greater than zero. The lower and upper p--values
-correspond to so--called \textbf{one--sided} tests. 
+correspond to so--called \textbf{one--sided} tests.
 In order to compute the two--sided p--value,
 we compute both one--sided ones and then take twice the smaller one.
 
 
 
-<< r getPvalue, dependson="permTest", cache = TRUE >>=
-## draw 1e4 times a permutation of the  sample labels  and compute the 
+<<getPvalue, dependson="permTest", cache = TRUE >>=
+## draw 1e4 times a permutation of the  sample labels  and compute the
 ## two sided p--value
 
 
@@ -310,10 +327,10 @@ of the data and the higher the sample size, the "thinner" the sampling distribut
 
 The p--value gives the probability to observe a difference of \Sexpr{testResult$obsDiff} or greater
 assuming that the null hypothesis is true. If this probability is very low, we can be confident
-that the null hypothesis is not true and thus the alternative is, i.e. that there is actually 
+that the null hypothesis is not true and thus the alternative is, i.e. that there is actually
 a difference between the height of the two varieties.
 
-The name ``permutation test" stems from the fact that we picked 
+The name ``permutation test" stems from the fact that we picked
 $n_1$ observations without replacement to label as the first sample,
 and labelled the others as the second sample. This is equivalent to randomly
 permuting all labels, hence the name. If we use all possible permutations for the test,
@@ -322,28 +339,28 @@ for large sample sizes.
 
 \subsection{Summary: two--sample permutation test recipe}
 
-\begin{enumerate} [label=(\emph{\alph*})] 
+\begin{enumerate} [label=(\emph{\alph*})]
  \item Pool the values of the two groups
  \item repeat a large number of  times (> 10 000)
     \begin{itemize}
     \item  Draw a resample of size $n_1$ without replacement
-  
+
     \item  Use the remaining $n_2$ observations for the other sample
-  
+
     \item  Calculate the difference in means, or another statistic that com-
     pares samples
-    
+
     \item   Plot a histogram of the random statistic values; show the observed
     statistic.
-    
+
   \item  Calculate the p--value as the fraction of times the random statistics exceed or equal the observed statistic
-  \end{itemize}  
+  \end{itemize}
 \end{enumerate}
 
-  
+
 \section{The two sample $t$--test}
 
-Instead of a permutation test, we can use a t--test to test the difference between the 
+Instead of a permutation test, we can use a t--test to test the difference between the
 two varieties. In contrast to the permutation test, the sampling distribution of the
 mean is obtained analytically, via the assumption of a normal distribution for both
 input groups. We will discuss the normal distribution next.
@@ -351,11 +368,11 @@ input groups. We will discuss the normal distribution next.
 \subsection{The Normal Distribution}
 
 The normal distribution is of key importance because it is assumed for many
-data generating processes. Among other things, we will look at (reprocessed) 
-gene expression values than can be seen as realizations of a random variable $X$ 
-having a normal distribution. 
+data generating processes. Among other things, we will look at (reprocessed)
+gene expression values than can be seen as realizations of a random variable $X$
+having a normal distribution.
 
-Equivalently, one says that the data values are members of a normally distributed 
+Equivalently, one says that the data values are members of a normally distributed
 population with mean $\mu$ (mu) and variance $\sigma^2$ (sigma squared). It
 is good custom to use Greek letters for population properties and $N ( \mu ,\sigma^2 )$
 for the normal distribution. The value of the distribution function is given
@@ -364,19 +381,19 @@ or equal to $x$. Various properties of the normal distribution are illustrated
 by the examples below.
 
 
-\subsection{Example: Explore the Normal Distribution} 
+\subsection{Example: Explore the Normal Distribution}
 
 To view members of the normal distribution load the
 \CRANpkg{TeachingDemos"} ` package and enter the the command \Rfunction{vis.normal()}
-to launch an interactive display of  densities of the normal distribution, 
+to launch an interactive display of  densities of the normal distribution,
 i.e. bell-shaped curves.
 The curves are symmetric around $\mu$ and attain a
 unique maximum at $x = \mu$. If $x$ moves further away from the mean $\mu$, then
 the curves moves to zero so that extreme values occur with small probability.
 Move the mean and the standard deviation from the left to the right to
 explore their effect on the shape of the normal distribution. In particular,
-when the mean $\mu$ increases, then the distribution moves to the right. If $\sigma$ 
-is small/large, then the distribution is steep/flat. 
+when the mean $\mu$ increases, then the distribution moves to the right. If $\sigma$
+is small/large, then the distribution is steep/flat.
 
 \subsection{The ALL data}
 
@@ -384,7 +401,7 @@ The ALL data consist of microarrays from 128 different individuals with
 acute lymphoblastic leukemia (ALL). There are 95 samples with B-cell ALL
 and 33 with T-cell ALL and because these are different tissues and quite
 different diseases we consider them separately and focus on the
-B-cell ALL tumors. 
+B-cell ALL tumors.
 
 An interesting subset, with two groups having approximately the same
 number of samples in each group, is the comparison of the B-cell tumors
@@ -401,7 +418,7 @@ division.
 Not all leukemia tumors carry the Philadelphia chromosome; there
 are other mutations that can be responsible for neoplastic alterations of
 blood cells, for instance a translocation between chromosomes 4 and 11
-(ALL1/AF4). 
+(ALL1/AF4).
 
 From the data, we look at the expression of the gene BCL2. The following
 code chunk shows the preprocessing of the data. We only select the B-Cell
@@ -416,11 +433,11 @@ fusALL$mol.biol <- factor(fusALL$mol.biol)
 fusALL
 sample_n(pData(fusALL), 10)
 
-groupsALL <- fusALL$mol.biol 
+groupsALL <- fusALL$mol.biol
 expALL <- exprs(fusALL)
-  
-anno_fusALL <- plyr::ddply(AnnotationDbi::select(hgu95av2.db, 
-                                  keys=rownames(expALL), 
+
+anno_fusALL <- plyr::ddply(AnnotationDbi::select(hgu95av2.db,
+                                  keys=rownames(expALL),
                                   columns = c("SYMBOL", "GENENAME", "ENSEMBL"),
                                   keytype="PROBEID"), "PROBEID", function(X){X[1,]})
 
@@ -430,8 +447,8 @@ anno_fusALL <- plyr::ddply(AnnotationDbi::select(hgu95av2.db,
 
 
 
-Now the the sample group is coded in the vector \Rfunction{groupsALL}, the expression 
-data is in \Rfunction{expALL} and the annotation of the probes is in 
+Now the the sample group is coded in the vector \Rfunction{groupsALL}, the expression
+data is in \Rfunction{expALL} and the annotation of the probes is in
 \Rfunction{anno\textunderscore fusALL}
 
 << showALL, dependson="setupALL" >>=
@@ -454,31 +471,31 @@ anno_fusALL[1152,]
 @
 
 
-This gene encodes an integral outer mitochondrial membrane protein 
-that blocks the apoptotic death of some cells such as lymphocytes. 
+This gene encodes an integral outer mitochondrial membrane protein
+that blocks the apoptotic death of some cells such as lymphocytes.
 Constitutive expression of BCL2 is thought to be the cause of
 follicular lymphoma. We now develop a normal distribution model for
 the translocation group of the ALL data.
 
 
 
-Suppose that the expression  values of the ALL group 
-of gene BCL2  can be represented by $X$ which is distributed as 
+Suppose that the expression  values of the ALL group
+of gene BCL2  can be represented by $X$ which is distributed as
 $N (8.6, 0.5 )$. From
 the graph of its density function, it can be observed that it
-is symmetric and bell-shaped around $\mu = 8.6$. 
+is symmetric and bell-shaped around $\mu = 8.6$.
 
 A density function may very well be seen as a histogram with
  arbitrarily small bars (intervals). The
 probability that the expression values are less than 8 is
-$P (X < 8) =$ \Rfunction{pnorm(8, 8.6, 0.5)} $=$ \Sexpr{pnorm(8, 8.6, 0.5)}. 
+$P (X < 8) =$ \Rfunction{pnorm(8, 8.6, 0.5)} $=$ \Sexpr{pnorm(8, 8.6, 0.5)}.
 
 
-The figure next to it illustrates the value 0.115 of the 
+The figure next to it illustrates the value 0.115 of the
 \textbf{cumulative distribution function (cdf)}
 at $x = 8$. It corresponds to the area of the green colored surface below the graph of the
-density function in the figure. 
- 
+density function in the figure.
+
 
 << BCL2-density-cdf, echo = TRUE >>=
 
@@ -499,23 +516,23 @@ dataGG = data.frame(x = x, y = F(x))
 dataGG <- mutate(dataGG,  area = ifelse(x < 8, "in", "out"  ))
 
 p<-qplot(data = dataGG, x = x, y = y, geom="line")
-p<- p + annotate("text", x = 8, y = 0, label = "8") 
+p<- p + annotate("text", x = 8, y = 0, label = "8")
 p<- p	+ annotate("text",y = .16, x = 6, label = "0.115")
 
 p <- p + geom_segment(y=0, yend = F(8), x=8, xend = 8, size = I(1))
 p <- p + geom_segment(y=F(8), yend = F(8), x=6, xend = 8, size = I(1))
 p + labs(title = "P(X<=8)= 0.115") + xlab("Gene-Expression") + ylab("distribution F")
-  
+
 
 @
 
 
 The probability that the expression values
-are greater than $9$ is $P (X \geq 9) =$ 
+are greater than $9$ is $P (X \geq 9) =$
 
 
 << BCL2-1, echo = TRUE >>=
-1 - pnorm(9, 8.6, 0.5) 
+1 - pnorm(9, 8.6, 0.5)
 @
 
 
@@ -524,7 +541,7 @@ $P (8 \leq X \leq 9) =$
 
 
 << BCL2-2, echo = TRUE >>=
-pnorm(9, 8.6, 0.5) - pnorm(8, 8.6, 0.5) 
+pnorm(9, 8.6, 0.5) - pnorm(8, 8.6, 0.5)
 @
 
 
@@ -557,13 +574,13 @@ The estimates
 
 << BCL2-5, echo = TRUE >>=
 mean(x)
-#and 
+#and
 sd(x)
 @
 
 are close to their population values $\mu = 8.6$ and $\sigma = 0.5$.
 
-\subsubsection*{Exercise: Normal Model for a gene} 
+\subsubsection*{Exercise: Normal Model for a gene}
 
 Suppose that the distribution of the expression values for a
 gene is distributed according to $N(1.6, 0.42)$.
@@ -584,13 +601,13 @@ compare the sample mean and standard deviation to that of the population.
 
 \subsection{Conducting a t-test}
 
-Suppose that gene expression data from two groups of patients (experimental conditions) 
+Suppose that gene expression data from two groups of patients (experimental conditions)
 are available and that the hypothesis is about the difference
 between the population means $\mu_1$ and $\mu_2$ . In particular, $H_0 : \mu_1 = \mu_2$
 is to be tested against $H_1 : \mu_1 \neq \mu_2$. These hypotheses can also be formulated
 as $H_0 : \mu_1 - \mu_2 = 0$ and $H_1 : \mu_1 - \mu_2 \neq 0$. Suppose that gene expression
 data from the first group are given by $\{x_1 , \dotsc, x_n \}$ and that of the second by
-$\{y_1 , \dotsc, y_m \}$. Let $\bar x$ be the mean of the first and $\bar y$ that of the second, 
+$\{y_1 , \dotsc, y_m \}$. Let $\bar x$ be the mean of the first and $\bar y$ that of the second,
 $s_1$ the variance of the first and  $s_2$ that of the second. Then the $t$-statistic can
 be formulated as
 
@@ -600,7 +617,7 @@ $$
 
 
 The decision procedure with respect to the null-hypothesis is completely analogous
-to the permutation test. However, the sampling distribution is 
+to the permutation test. However, the sampling distribution is
 \textbf{found analytically based on assumptions on the data and not by permutations}.
 
 Note that the $t$--value is large if the difference between
@@ -615,53 +632,53 @@ of freedom of the $t$--distribution changes slightly. This test is available by 
 
 \subsubsection*{Example: Comparing BCL2 between BCR/ABL and NEG  }
 The  gene BCL2 plays an important role with respect to discriminating
-BCR/ABL from NEG patients. The null hypothesis of equal means can be tested by the function 
+BCR/ABL from NEG patients. The null hypothesis of equal means can be tested by the function
 \Rfunction{t.test} and the appropriate factor and specification to separate the groups.
 (\Rfunction{var.equal=FALSE}  by default).
 
 <<tTestBCL2,  echo = TRUE>>=
 t.test(expALL[1152,] ~ groupsALL)
 ### alternative call
-t.test(expALL[1152, groupsALL == "BCR/ABL"], 
+t.test(expALL[1152, groupsALL == "BCR/ABL"],
        expALL[1152, groupsALL == "NEG"] )
 @
 The $t$-value is quite large, indicating that the two means $x$ and $y$ differ largely
-from zero relative to the corresponding standard error . Since the $p$--value is extremely small, 
-the conclusion is to reject the null--hypothesis of equal means. The data provide 
-strong evidence that the population means do differ. 
+from zero relative to the corresponding standard error . Since the $p$--value is extremely small,
+the conclusion is to reject the null--hypothesis of equal means. The data provide
+strong evidence that the population means do differ.
 
 
 
-\section{Wilcoxon rank test} 
+\section{Wilcoxon rank test}
 In case the data are normally distributed with equal variance, the $t$--test is
 an optimal test for testing $H_0 : \mu_1 = \mu_2$  against $H_1 : \mu_1 \neq \mu_2$.
  If, however, the data are not normally distributed due to skewness or
 otherwise heavy tails, then this optimality does not hold anymore and there
 is no guarantee that the significance level of the test equals the intended
-level $\alpha$. Usually, one will  loose power if the normality assumption 
-is validated, i.e. the  $\alpha$ will be inflated. 
+level $\alpha$. Usually, one will  loose power if the normality assumption
+is validated, i.e. the  $\alpha$ will be inflated.
 
-For this reason rank type of tests are developed for which on beforehand 
+For this reason rank type of tests are developed for which on beforehand
 no specific distributional assumptions need to be made.
-In the example below we shall concentrate on the two-sample Wilcoxon test. 
+In the example below we shall concentrate on the two-sample Wilcoxon test.
 
 
-To broaden our view we switch from hypotheses about means to those about distributions. 
-An alternative hypothesis may then be formulated as that the distribution of a first 
+To broaden our view we switch from hypotheses about means to those about distributions.
+An alternative hypothesis may then be formulated as that the distribution of a first
 group lays to the
-left of a second.  
+left of a second.
 
 
 To set the scene let the gene expression values of the first
-group ($x_1$ to $x_m$) have distribution $F$ and 
-those of the second group ($y_1$ to $y_n$) distribution $G$. 
+group ($x_1$ to $x_m$) have distribution $F$ and
+those of the second group ($y_1$ to $y_n$) distribution $G$.
 The null hypothesis is that both distributions are equal
-($H_0 : F = G$) and the alternative that they are not. 
+($H_0 : F = G$) and the alternative that they are not.
 
-For example that the $x$'s are smaller (or larger) than the $y$'s. 
-By the two-sample Wilcoxon test the data $x_1 , \dotsc , x_m$ , 
+For example that the $x$'s are smaller (or larger) than the $y$'s.
+By the two-sample Wilcoxon test the data $x_1 , \dotsc , x_m$ ,
 $y_1 , \dotsc , y_n$ are ranked and the rank numbers of the $x$'s are
-summed to form the statistic $W$ after a certain correction. 
+summed to form the statistic $W$ after a certain correction.
 
 The idea is that if the ranks of $x$'s are smaller than those of the $y$'s, then the
 sum is small. The distribution of the sum of ranks is known so that a $p$--value
@@ -692,7 +709,7 @@ We can of course also test the BCL2 gene for differential expression using
 a permutation test:
 
 <<  permTestBCL2 >>=
-pTest <- permTestTwoGroups(expALL[1152, groupsALL == "BCR/ABL"], 
+pTest <- permTestTwoGroups(expALL[1152, groupsALL == "BCR/ABL"],
        expALL[1152, groupsALL == "NEG"], permutations = 1e4 )
 
 pTest$pval
@@ -704,11 +721,11 @@ The result is similar to the other tests performed.
 
 \subsection{Where permutation test do not apply}
 
-Permutation tests are helpful and their widespread use has been made possible by 
-the computer power we have at our disposal today. However, they are not a panacea. 
+Permutation tests are helpful and their widespread use has been made possible by
+the computer power we have at our disposal today. However, they are not a panacea.
 
-We have seen that in the two groups case,  permutation testing is straightforward. 
-The same is true for the testing of the dependence between two variables for example, while 
+We have seen that in the two groups case,  permutation testing is straightforward.
+The same is true for the testing of the dependence between two variables for example, while
 other situations are not easily covered by a permutation test, such testing a single
 sample mean. Also, we cannot perform a permutation test of the mean difference if the variance
 in the two groups differ, since then we cannot pool the data.
@@ -719,14 +736,14 @@ in the two groups differ, since then we cannot pool the data.
 
 The t--test requires normally distributed data in order to be valid. In practice,
 this leads to many people prefer Wilcoxon tests over the t--test. However,
-the problem with the Wilcxocon test is that it implicitly assumes \textbf{equal variances} 
-in the two groups, since it only  tests for shifts in location. 
-So if the variances are not equal, it can give misleading results. 
+the problem with the Wilcxocon test is that it implicitly assumes \textbf{equal variances}
+in the two groups, since it only  tests for shifts in location.
+So if the variances are not equal, it can give misleading results.
 
-It actually often leads to overly low p--values. Below is a little simulation study 
+It actually often leads to overly low p--values. Below is a little simulation study
 showing this effect. Two groups of 10 normally distributed values are simulated,
 one with a standard deviation of 1 and another with a standard deviation of 15.
-There is no difference between the groups (both have mean 0), although 
+There is no difference between the groups (both have mean 0), although
 the standard deviations are very different, so we expect a
 proportion of 5\%  significant p--values at an $\alpha$--level of 5\%.
 
@@ -750,7 +767,7 @@ wc <- function(){
   tt$p.value
 }
 
-pVals_WC <- replicate(1000, expr = wc()) 
+pVals_WC <- replicate(1000, expr = wc())
 
 hist(pVals_WC, col = "tan3", main = "Wilcoxon P--values")
 prop.table(table(pVals_WC < 0.05))
@@ -765,7 +782,7 @@ ttest <- function(){
   tt$p.value
 }
 
-pValsT <- replicate(1000, expr = ttest()) 
+pValsT <- replicate(1000, expr = ttest())
 
 hist(pValsT, col = "coral3", main = "t-test P--values")
 prop.table(table(pValsT < 0.05))
@@ -777,17 +794,17 @@ the t--test pvalues are correct (uniformly distributed) and
 the alpha level is kept, while the Wilcoxon test is too optimistic and
 has an actual level of near 10\% at a nominal level
 of 5\%. So there are too many false positives for the Wilcoxon test.
- 
- 
- 
+
+
+
 
 \section{Chi--squared Test and the fisher test for contingency tables}
 
 The test above treat continuous data, We now turn to tests for categorical data.
 Typically, categorical data is represented in the form of contingency
-tables, where one categorization is represented by the rows and the other 
+tables, where one categorization is represented by the rows and the other
 by the columns. A $\chi^2$ test then tests for a  for independence of
-rows and columns in an $r \times c$ contingency table. It will tell us, whether 
+rows and columns in an $r \times c$ contingency table. It will tell us, whether
 the row classifications are independent of the column classifications in a table like
 this:
 
@@ -797,9 +814,9 @@ this:
 \includegraphics[width=6cm,height=3.7cm]{cont-table}
 \end{center}
 
-The actual number observations in each cell of the table can be 
+The actual number observations in each cell of the table can be
 compared to the expected number of observations under the assumption
-of independent row and column classifications and is given by 
+of independent row and column classifications and is given by
 
 \begin{center}
 \includegraphics[height = 1.5cm, width = 5cm]{observed-cells}
@@ -809,33 +826,33 @@ and a $\chi^2$ statistic can be computed as above:
 \begin{gather*}
 \chi^2 = \sum_{i=1}^{r} \sum_{j=1}^{c} {(O_{ij} - E_{ij})^2 \over E_{ij}}
 \end{gather*}
-it has $(r - 1)(c - 1)$  degrees of freedom. 
+it has $(r - 1)(c - 1)$  degrees of freedom.
 
 \subsection{Fishers tea tasting experiment and genetics}
 
-One of the most famous examples of hypothesis testing was performed by RA Fisher on a lady 
-that claimed could tell if milk was added before or after the tea was poured. 
-Fisher gave the lady four pairs of cups of tea: 
+One of the most famous examples of hypothesis testing was performed by RA Fisher on a lady
+that claimed could tell if milk was added before or after the tea was poured.
+Fisher gave the lady four pairs of cups of tea:
 one with milk poured first, the other after. The order was randomized.
 Say the lady picked 3 out 4 correctly, do we believe she has a special ability? Tests
 for discrete data help to answer this question by quantifying what happens by chance.
 
-The basic question we ask is: if the lady is just guessing, what are the chances that she 
-gets 3 or more correct?  If we assume the lady is just guessing randomly, we can think of 
-this particular examples as picking 4 balls out of an urn with 4 green (correct answer) and 
-4 red (incorrect answer) balls. 
+The basic question we ask is: if the lady is just guessing, what are the chances that she
+gets 3 or more correct?  If we assume the lady is just guessing randomly, we can think of
+this particular examples as picking 4 balls out of an urn with 4 green (correct answer) and
+4 red (incorrect answer) balls.
 
-Under the null hypothesis that the lady is just guessing each ball has the same chance of 
-being picked. We can then use combinatorics to figure out the probability. The probability 
-of picking 3 is 
-${4 \choose 3} {4 \choose 1} / {8 \choose 4} = 16/70$.  
+Under the null hypothesis that the lady is just guessing each ball has the same chance of
+being picked. We can then use combinatorics to figure out the probability. The probability
+of picking 3 is
+${4 \choose 3} {4 \choose 1} / {8 \choose 4} = 16/70$.
 The probability of picking all correct is
-${4 \choose 4} {4 \choose 0}/{8 \choose 4}= 1/70$. Thus the chance of observing a 3 or 
-something more extreme, under the null hypothesis, is 0.24. This is the $p$--value. 
-This is called Fisher's exact test and it uses the hyper geometric distribution. It is not 
+${4 \choose 4} {4 \choose 0}/{8 \choose 4}= 1/70$. Thus the chance of observing a 3 or
+something more extreme, under the null hypothesis, is 0.24. This is the $p$--value.
+This is called Fisher's exact test and it uses the hyper geometric distribution. It is not
 appropriate for most the tests applied in genetics but the idea is similar.
 
-For example, imagine we have 250 individuals, some of them have a given disease 
+For example, imagine we have 250 individuals, some of them have a given disease
 others don't. We observe that a 20\% of the individuals that are homozygous for the minor allele have the disease compared to 10\% of the rest. Would we see this again if we picked another 250 individuals?
 
 Here is an example dataset
@@ -856,9 +873,9 @@ The expected table is therefore
 rbind(c(1-p,p)*sum(genotype=="aa"),c(1-p,p)*sum(genotype=="AA"))
 @
 
-We can compute an $\chi^2$ statistic of seeing a deviation for the expected table 
+We can compute an $\chi^2$ statistic of seeing a deviation for the expected table
 as big as this one.
-The p-value for this table is 
+The p-value for this table is
 <<Gentetic association test 4>>=
 
 chisq.test(tab)$p.value
@@ -866,7 +883,7 @@ chisq.test(tab)$p.value
 
 Note that there is not a one to one relationship between the odds ratio
 ($\frac{n_{11}}{n_{12}} /  \frac{n_{21}}{n_{22}} $ )
-and the p-value. If we increase the numbers but keep the difference 
+and the p-value. If we increase the numbers but keep the difference
 in proportions the same, the $p$--value is reduced substantially:
 
 <<Gentetic association test 5>>=
@@ -877,30 +894,30 @@ chisq.test(tab)$p.value
 
 \subsection{Simple gene set enrichment analysis}
 Suppose that the number of  onco--type of genes in Chromosome 1
-is $n_{11} = 100$ out of a total of $n_{12} = 200$ genes 
-and the number of onco--genes in the rest of the genome 
+is $n_{11} = 100$ out of a total of $n_{12} = 200$ genes
+and the number of onco--genes in the rest of the genome
 is $n_{21} = 300$ out of a total of $n_{22} = 6000$ genes as summarized in the
-table. 
+table.
 
 \begin{table}[h!t]
 \centering
 \begin{tabular}{|r|rr|c|}
   \hline
- & onco--genes & non--onco-genes & row--sums \\ 
+ & onco--genes & non--onco-genes & row--sums \\
   \hline
-Chromosome 1 & 100 & 200 & 300\\ 
-Rest of Genome & 3000 & 6000 & 9000 \\ 
+Chromosome 1 & 100 & 200 & 300\\
+Rest of Genome & 3000 & 6000 & 9000 \\
    \hline
  column--sums & 3100 & 6200 & 9300 \\
    \hline
 \end{tabular}
 \end{table}
 
-The $\chi^2$ test will now tell us, whether there is a significantly higher 
+The $\chi^2$ test will now tell us, whether there is a significantly higher
 or lower proportion of onco--genes in chromosome 1 than in the  rest of the genome.
 Chromosome 1 serves as our gene set here.
-In biology, over--representation is often called ``enrichment'' and an under--representation 
-is called ``depletion'' and hence the  $\chi^2$ test for this table can be viewed 
+In biology, over--representation is often called ``enrichment'' and an under--representation
+is called ``depletion'' and hence the  $\chi^2$ test for this table can be viewed
 as test of an onco--gene enrichment/depletion in the gene set chromosome 1:
 
 <<chi2-enrich>>=
@@ -908,12 +925,12 @@ dat1 <- matrix(c(100,200,3000,6000),2,byrow=TRUE)
 ## Chi2 test
 chisq.test(dat1)
 @
-An alternative to the $\chi^2$ test for 2 $\times$ 2 tables is the 
+An alternative to the $\chi^2$ test for 2 $\times$ 2 tables is the
  Fisher--test. It tests whether
 the odds ratio $\frac{n_{11}}{n_{12}} /  \frac{n_{21}}{n_{22}} $ is significantly
-different from 1, which would again indicate a ``depletion'' (if OR $< 1$) or enrichment 
-(if OR  $>1$) of oncogenes in chromosome 1 in this case. 
-As we can see the odds ratio is 1, i.e. there is neither enrichment nor depletion. 
+different from 1, which would again indicate a ``depletion'' (if OR $< 1$) or enrichment
+(if OR  $>1$) of oncogenes in chromosome 1 in this case.
+As we can see the odds ratio is 1, i.e. there is neither enrichment nor depletion.
 
 <<chi2-enrich-fisher>>=
 dat1 <- matrix(c(100,200,3000,6000),2,byrow=TRUE)
@@ -926,31 +943,31 @@ fisher.test(dat1)
 
 As yet another alternative, we can compare the proportion of onco--genes in chromosome
 1 to the the proportion of  onco--genes in the rest of the genome. As we can see,
-the test of proportions also returns a $p$--value of 1. 
+the test of proportions also returns a $p$--value of 1.
 
 
 <<chi2-enrich-prop>>=
 dat1 <- matrix(c(100,200,3000,6000),2,byrow=TRUE)
 ## Comparison of proportions of oncogenes in the two subsets
-dat1.prop <- matrix(c(dat1[1,1], dat1[2,1],dat1[1,1] + dat1[1,2], 
-               dat1[2,1] + dat1[2,2]), 2,2,byrow=TRUE) 
+dat1.prop <- matrix(c(dat1[1,1], dat1[2,1],dat1[1,1] + dat1[1,2],
+               dat1[2,1] + dat1[2,2]), 2,2,byrow=TRUE)
 prop.test(dat1.prop[1,] ,dat1.prop[2,])
 
 @
 
 
 
-Let's look at some additional data: the table below shows an example of an 
-under--representation of onco--genes in Chromosome 1 
+Let's look at some additional data: the table below shows an example of an
+under--representation of onco--genes in Chromosome 1
 
 \begin{table}[h!t]
 \centering
 \begin{tabular}{|r|rr|c|}
   \hline
- & onco--genes & non--onco-genes & row--sums \\ 
+ & onco--genes & non--onco-genes & row--sums \\
   \hline
-Chromosome 1 & 50 & 250 & 300 \\ 
-Rest of  Genome & 3000 & 6000 & 9000 \\ 
+Chromosome 1 & 50 & 250 & 300 \\
+Rest of  Genome & 3000 & 6000 & 9000 \\
    \hline
  column--sums & 3050 & 6250 & 9300 \\
    \hline
@@ -967,20 +984,20 @@ chisq.test(dat2)
 ## Fisher test
 fisher.test(dat2)
 ## Comparison of proportions of oncogenes in the two subsets
-dat2.prop <- matrix(c(dat2[1,1], dat2[2,1],dat2[1,1] + dat2[1,2], 
-               dat2[2,1] + dat2[2,2]), 2,2,byrow=TRUE) 
+dat2.prop <- matrix(c(dat2[1,1], dat2[2,1],dat2[1,1] + dat2[1,2],
+               dat2[2,1] + dat2[2,2]), 2,2,byrow=TRUE)
 prop.test(dat2.prop[1,] ,dat2.prop[2,])
 @
 %
 
-Both the $\chi^2$ test as well as the Fisher test are significant. 
+Both the $\chi^2$ test as well as the Fisher test are significant.
 The odds ratio is $\frac{50}{250} /  \frac{3000}{6000}  = 0.4$
-showing a depletion (OR $< 1$) of oncogenes in chromosome 1. 
+showing a depletion (OR $< 1$) of oncogenes in chromosome 1.
 The test of proportions also gives a significant $p$--value.
 
-The odds ratio is very often used as a measure of association in 
+The odds ratio is very often used as a measure of association in
 2 $\times$ 2 tables since the absolute value of the natural logarithm
-of the odds ratio (often called lod--score) given by 
+of the odds ratio (often called lod--score) given by
 
 \begin{gather*}
 \text{lod} = \abs{\ln\left(\frac{n_{11}}{n_{12}} /  \frac{n_{21}}{n_{22}}\right)}
@@ -989,34 +1006,34 @@ of the odds ratio (often called lod--score) given by
 is only dependent on the cell contents
 of table, i.e. shuffling rows or columns does not change it.
 
-%ex.df <- data.frame( significant = c(100,300), non_significant = c(2000,6000), 
+%ex.df <- data.frame( significant = c(100,300), non_significant = c(2000,6000),
 %row.names = c("Chromosome_1", "genome") )
 %print(xtable(ex.df  ), type = "latex")
 
 
 \subsubsection*{Exercise: Rocky mountain spotted fever}
 
-In 747 cases of "Rocky Mountain spotted fever" from the western United States, 
-210 patients died. 
-Out of 661 cases from the eastern United States, 
+In 747 cases of "Rocky Mountain spotted fever" from the western United States,
+210 patients died.
+Out of 661 cases from the eastern United States,
 122 died. Is the difference statistically significant?
 Use a prop--test as well as a Fisher--test.
 
 \section{Multiple testing}
 
 When performing a large number of tests, the Type I error is inflated:
-Let's assume we perform  $m$ tests with Type I error rate $\alpha$ (reject $H_0$ 
-although  $H_0$ is true) of 5\%. Then the probability of  \textbf{no false rejection} 
+Let's assume we perform  $m$ tests with Type I error rate $\alpha$ (reject $H_0$
+although  $H_0$ is true) of 5\%. Then the probability of  \textbf{no false rejection}
 if the tests are independent is:
 
 \begin{gather}
 \underbrace{0.95\cdot{0.95}\cdot \dotso \cdot {0.95}}_\text{m--times} \ggg  0.95
 \end{gather}
 
-Thus, the larger the number of tests performed, the higher the probability 
+Thus, the larger the number of tests performed, the higher the probability
 of a false rejection (= Type I error, false positive)
 
-However, this problems is often put aside and hypothesis testing/significance 
+However, this problems is often put aside and hypothesis testing/significance
 analysis is commonly used in a too simple way. Correcting for multiple testing
 helps to avoid false positives or discoveries. There are two key components
 of a multiple testing procedure:
@@ -1028,7 +1045,7 @@ of a multiple testing procedure:
 
 \subsection{Types of errors and error rates}
 
-Suppose you are testing a hypothesis that a parameter $\beta$ equals zero versus 
+Suppose you are testing a hypothesis that a parameter $\beta$ equals zero versus
 the alternative that it does not equal zero. Let us assume that there are
 $m_0$ number of tests that correspond to a true null hypothesis out of $m$ total
 tests and that we reject $R$ null hypotheses in total. These are the possible outcomes:
@@ -1038,10 +1055,10 @@ tests and that we reject $R$ null hypotheses in total. These are the possible ou
 \centering
 \begin{tabular}{|r|rr|c|}
   \hline
- & $\beta=0$  & $\beta\neq0$ & Hypotheses  \\ 
+ & $\beta=0$  & $\beta\neq0$ & Hypotheses  \\
   \hline
-Claim $\beta=0$  & True Positive  & False Negative & $m-R$\\ 
-Claim $\beta\neq 0$  & False Positive & True Negative  &  $R$ \\ 
+Claim $\beta=0$  & True Positive  & False Negative & $m-R$\\
+Claim $\beta\neq 0$  & False Positive & True Negative  &  $R$ \\
    \hline
 Claims  & $m_0$  & $m-m_0$ & $m$\\
    \hline
@@ -1051,8 +1068,8 @@ Claims  & $m_0$  & $m-m_0$ & $m$\\
 \begin{itemize}
   \item Type I error or false positive  --- Say that the parameter
         does not equal zero when it does
-  \item Type II error or false negative  --- Say that the parameter 
-  equals zero when it doesn't 
+  \item Type II error or false negative  --- Say that the parameter
+  equals zero when it doesn't
 \end{itemize}
 
 Just like ordinary significance testing tries to control the false positive
@@ -1062,29 +1079,29 @@ rate, there are other types of rates commonly used in multiple testing procedure
   \item \textbf{False positive rate} - The rate at which false results ($\beta = 0$) are
 called significant: $E\left[\frac{FP}{m_0}\right]$
 
-  \item \textbf{Family wise error rate (FWER)} - The probability of at least 
+  \item \textbf{Family wise error rate (FWER)} - The probability of at least
 one false positive ${\rm Pr}(FP \geq 1)$
 
-  \item \textbf{False discovery rate (FDR)} - The rate at 
+  \item \textbf{False discovery rate (FDR)} - The rate at
   which claims of significance are false  $E\left[\frac{FP}{FP + TP}\right]$
 \end{itemize}
 
 
-If $p$--values are correctly calculated calling all $p < \alpha$ significant 
-will control the false positive rate at level $\alpha$ on average. 
+If $p$--values are correctly calculated calling all $p < \alpha$ significant
+will control the false positive rate at level $\alpha$ on average.
 
 
 
 \subsection{Control of  error rates}
 
-Suppose that you perform 10,000 tests and $\beta = 0$ for all of them. 
-and  you call all $P < 0.05$ significant. 
-Then expected number of false positives is: $10,000 \times 0.05 = 500$  
-false positives. How do we avoid so many false positives? 
+Suppose that you perform 10,000 tests and $\beta = 0$ for all of them.
+and  you call all $P < 0.05$ significant.
+Then expected number of false positives is: $10,000 \times 0.05 = 500$
+false positives. How do we avoid so many false positives?
 
 \subsubsection{Controlling family-wise error rate (FWER)}
 
-The Bonferroni correction is the oldest multiple testing correction. 
+The Bonferroni correction is the oldest multiple testing correction.
 
 \underline{Basic algorithm}
 \begin{itemize}
@@ -1123,8 +1140,8 @@ may behave strangely under dependence.
 
 \subsubsection{Adjusted $p$--values}
 
-The  approach indicated above is to adjust the threshold $\alpha$,  a different 
-approach is to calculate ``adjusted $p$--values". They are not $p$--values anymore but 
+The  approach indicated above is to adjust the threshold $\alpha$,  a different
+approach is to calculate ``adjusted $p$--values". They are not $p$--values anymore but
 they can be used directly without adjusting $\alpha$.
 
 Example
@@ -1132,19 +1149,19 @@ Example
 \begin{itemize}
   \item Suppose p-values are $p_1,\ldots,p_m$
   \item You could adjust them by taking $p_i^{fwer} = \max\{m \times p_i,1\}$ for each $p$--value.
-  \item Then if you call all $p_i^{fwer} < \alpha$ significant you will control the FWER. 
+  \item Then if you call all $p_i^{fwer} < \alpha$ significant you will control the FWER.
 \end{itemize}
 
 \subsection{Diagnostic plots for multiple testing procedures}
-The code below simulates  $m = 200$ $p$--values from the mixture model 
+The code below simulates  $m = 200$ $p$--values from the mixture model
 
 \begin{gather*}
 0.75\cdot N(0,1) + 0.25 \cdot N(2,1)
 \end{gather*}
 
-,i.e. $m_0 = 150$ here and the null distribution is 
-the standard normal distribution. \textbf{It is an important fact hat for a 
-continuous null distributions the corresponding $p$--values are uniform}. 
+,i.e. $m_0 = 150$ here and the null distribution is
+the standard normal distribution. \textbf{It is an important fact hat for a
+continuous null distributions the corresponding $p$--values are uniform}.
 
 <<simulate z scores>>=
 
@@ -1153,7 +1170,7 @@ eta0.true = 0.75
 
 get.random.zscore = function(m=200)
 {
-  
+
   m0 = m*eta0.true
   m1 = m-m0
   z = c(  rnorm(m0, mean=0, sd=sd.true),
@@ -1165,25 +1182,25 @@ get.random.zscore = function(m=200)
 
 set.seed(555)
 z <- get.random.zscore(200)
-pv = 1- pnorm(z, sd = sd.true) 
+pv = 1- pnorm(z, sd = sd.true)
 
 @
 
 \subsubsection{Schweder and Spj\o{}tvoll plot}
 
 
-If a test statistic does not correspond to a true null hypothesis, the corresponding 
-$p$--value will be very small. 
-For large $p$--values which likely  will 
-correspond to true null hypotheses it 
+If a test statistic does not correspond to a true null hypothesis, the corresponding
+$p$--value will be very small.
+For large $p$--values which likely  will
+correspond to true null hypotheses it
 then holds that
 \begin{gather*}
 E[M(p)] = m_0(1-p)  \, .
 \end{gather*}
 
-Large (probably non--null) $p$--values will thus be close to a straight 
-line with slope $m_0$. Accordingly, small 
-$p$--values (probably null) will deviate from that line. 
+Large (probably non--null) $p$--values will thus be close to a straight
+line with slope $m_0$. Accordingly, small
+$p$--values (probably null) will deviate from that line.
 
 Schweder and Spj\o{}tvoll (Biometrika, 1982) suggested to use these
 facts for a diagnostic plot
@@ -1213,10 +1230,10 @@ close to
 \end{equation*}
 %
 In our simulated data  $F_0 = 1-N(0,1)$ and $F_1 = 1-N(2,1)$. By looking
-at the figure, the points start to deviate at 150 from the straight line, 
+at the figure, the points start to deviate at 150 from the straight line,
 as expected from the simulation model.
 
-<<plot SchwSpot plot >>=
+<<SchwSpot_plot >>=
 (ggplot2::qplot(sort(1-pv), 1:200, xlab = "1 - p-values", ylab = "No. of hypotheses",
        main = "Schweder and Spotvoll plot")
  + geom_abline(intercept = 0, slope = 200*eta0.true, aes(color = "coral3")))
@@ -1226,30 +1243,30 @@ as expected from the simulation model.
 As already mentioned, the $p$--values follow a uniform distribution on the unit interval
 [0,1] if they are computed using a continuous null distribution. Significant $p$--values
 thus become visible as an enrichment of $p$--values near zero in the histogram.
-A histogram of $p$--values should always be plotted in order to check whether 
-they have been computed correctly. 
+A histogram of $p$--values should always be plotted in order to check whether
+they have been computed correctly.
 
-<<pvalue histogram >>=
-ggplot2::qplot(x = pv, xlab = "p-values", main = "Histogram of p-values, correct null 
-        distribution", 
+<<pvalue_histogram >>=
+ggplot2::qplot(x = pv, xlab = "p-values", main = "Histogram of p-values, correct null
+        distribution",
        fill = I("navyblue"))
 @
 We see that our $p$--values are uniformly distributed under the null hypotheses.
 Computing the $p$--values assuming a $N(0,2)$ null distribution changes the picture.
 
-<<pvalue histogram wrong null>>=
-ggplot2::qplot(x = pnorm(z, sd = 2) , xlab = "p-values", main = "Histogram of p-values, 
-      variance of null distribution too high", 
+<<pvalue_histogram_wrong_null>>=
+ggplot2::qplot(x = pnorm(z, sd = 2) , xlab = "p-values", main = "Histogram of p-values,
+      variance of null distribution too high",
        fill = I("coral3"))
 @
 
-If the assumed variance of the null distribution is too high, we often see 
+If the assumed variance of the null distribution is too high, we often see
 hill--shaped $p$--value histogram. If the variance is too low, we get a U--shaped
 histogram, with peaks at both ends.
 
-<<pvalue histogram wrong null 2 >>=
-ggplot2::qplot(x = pnorm(z, sd = 0.5) , xlab = "p-values", main = "Histogram of p-values, 
-      variance of null distribution too low", 
+<<pvalue_histogram_wrong_null_2 >>=
+ggplot2::qplot(x = pnorm(z, sd = 0.5) , xlab = "p-values", main = "Histogram of p-values,
+      variance of null distribution too low",
        fill = I("chartreuse4"))
 @
 
@@ -1257,9 +1274,9 @@ ggplot2::qplot(x = pnorm(z, sd = 0.5) , xlab = "p-values", main = "Histogram of 
 The most commonly used multiple testing adjustments can be computed using
 the function \Rfunction{padjust}. To compute the Benjamini Hochberg
 adjusted $p$--values simply specify \Rcode{ method = "BH"}. For FEWR
-control we choose  \Rcode{ method = "bonferroni"}. 
+control we choose  \Rcode{ method = "bonferroni"}.
 
-<<p-value adjustments>>=
+<<p-value_adjustments>>=
 alpha = 0.05
 pv.BH <- p.adjust(pv, method = "BH")
 table(pv.BH < 0.05)
@@ -1275,7 +1292,7 @@ The figure illustrates of the Benjamini-Hochberg multiple testing
 adjustment. The black line shows the
 $p$-values ($y$-axis) versus their rank ($x$-axis), starting with
 the smallest $p$-value from the left, then the second smallest, and
-so on. 
+so on.
 The red line is a straight line with slope $\alpha/m$, where
 $m$ is the number of tests, and
 $\alpha$ is a target false discovery rate.  FDR
@@ -1291,7 +1308,7 @@ we only get 3 significant $p$--values.
 The \CRANpkg{mutoss} package provides many more multiple testing adjustments. In
 addition, it also has  the function \Rfunction{ABH\_ pi0\_ est}  that estimates
 the proportion $\pi_0$ of the null model (in our case 75\%) for us based
-on the Schweder and Spj\o{}tvoll plot. Here, 
+on the Schweder and Spj\o{}tvoll plot. Here,
 it estimates $\pi_0$ as \Sexpr{mutoss::ABH_pi0_est(pv)}  which is quite far
 away from the true value. However, with only 200 test statistics, it also
 difficult to estimate $\pi_0$ reliably.
@@ -1301,7 +1318,7 @@ difficult to estimate $\pi_0$ reliably.
 pv.OracleBH <- oracleBH(pValue=pv, alpha=alpha, pi0=0.75)
 @
 
-The BH procedure implicitly assumes $\pi_0 = 1$, i.e. that there are no 
+The BH procedure implicitly assumes $\pi_0 = 1$, i.e. that there are no
 non--null p-values in its original form. Thus,
 we can gain power, by plugging in an estimate of $\pi_0$. Indeed, we gain
 \Sexpr{sum(pv.OracleBH$rejected) - sum(pv.BH < alpha)}
@@ -1311,12 +1328,12 @@ more rejections.
 The q--value is an FDR estimation procedure roughly defined as a BH procedure
 combined with a $pi_0$ estimate --- pretty much like the oracle BH procedure above and is
 very popular in  genomics. It tries to estimate $\pi_0$ from the $p$--value histogram. Note that it actually tries to estimate the FDR for a test statistic rather than just providing
-a control of the FDR as the BH procedure.  
+a control of the FDR as the BH procedure.
 
 <<mutoss Qvalue>>=
 pv.Qvals <- Qvalue(pv)
 table(pv.Qvals$qValues < 0.05)
-@ 
+@
 Although the number of $p$--values is low, the q--value procedure estimates $pi_0$
 correctly and provides the same number of rejected hypotheses as oracle BH procedure.
 
@@ -1325,16 +1342,16 @@ correctly and provides the same number of rejected hypotheses as oracle BH proce
 
 In microarray analyses, on usually uses a variant of a (regularized) $t$--statistic
 that is suitable for high-dimensional data and large-scale multiple testing such
-as the one implemented in the Bioconductor package \Biocpkg{limma}. 
+as the one implemented in the Bioconductor package \Biocpkg{limma}.
 
-The basic statistic used for significance analysis in \Biocpkg{limma} is the moderated 
+The basic statistic used for significance analysis in \Biocpkg{limma} is the moderated
 $t$--statistic, which is computed for each gene separately.
-It has the same interpretation as an ordinary $t$--statistic except that 
-the standard errors have been moderated across genes, i.e., shrunk toward a common value, 
-using a simple Bayesian model. This has the effect of borrowing information from the 
+It has the same interpretation as an ordinary $t$--statistic except that
+the standard errors have been moderated across genes, i.e., shrunk toward a common value,
+using a simple Bayesian model. This has the effect of borrowing information from the
 ensemble of genes to aid with inference about each individual gene.
 Moderated t-statistics lead to p- values in the same way that ordinary t-statistics do
-except that the degrees of freedom are increased, reflecting the greater 
+except that the degrees of freedom are increased, reflecting the greater
 reliability associated with the smoothed standard errors.
 
 \subsection{Some details of the \Biocpkg{limma} method}
@@ -1355,14 +1372,14 @@ groups.
 \subsection{Shrinkage estimation}
 
 The most important aspect of the \Biocpkg{limma} approach is that \Biocpkg{limma}
-performs a SHRINKAGE of the variances towards a target, which is given by $s_0^2$, the 
+performs a SHRINKAGE of the variances towards a target, which is given by $s_0^2$, the
 prior mean variance and the shrinkage intensity is $\frac{f_0}{f_0 + f}$.
 
 A $t$--test with $f_0 + f$ degrees of freedom using the shrunken variances
 is  then computed to assess differential expression. There are many other
-ways to perform shrinkage, which will commonly improve the estimation of the 
+ways to perform shrinkage, which will commonly improve the estimation of the
 variance by sharing information across genes. A wide  selection of these
-statistics is implemented in the package \CRANpkg{st} We use the \Rfunction{modt.stat} 
+statistics is implemented in the package \CRANpkg{st} We use the \Rfunction{modt.stat}
 from the package  to compute \Biocpkg{limma}s
 moderated $t$--statistic for BCL2 in the ALL data:
 
@@ -1378,15 +1395,15 @@ t.test(expALL[1152,] ~ groupsALL, var.equal=FALSE)$statistic
 
 Since information about the overall variance of the genes in the data set is used
 to compute the variance for CCND3, the whole data set has to be provided in
-order to compute the moderated $t$--statistic.  
+order to compute the moderated $t$--statistic.
 
 \subsubsection*{Exercise: Group comparison for gene GYPC}
-The gene GYPC plays an important role in regulating the mechanical 
+The gene GYPC plays an important role in regulating the mechanical
 stability of red cells. I can be found
-in line \Sexpr{grep("GYPC", anno_fusALL$SYMBOL)} of the expALL data set. (Try 
-\Rfunction{grep("GYPC", anno\textunderscore fusALL\$SYMBOL))}. 
+in line \Sexpr{grep("GYPC", anno_fusALL$SYMBOL)} of the expALL data set. (Try
+\Rfunction{grep("GYPC", anno\textunderscore fusALL\$SYMBOL))}.
 
-Test for the equality of the 
+Test for the equality of the
 means by an appropriate $t$--test. Is the experimental effect very strong?
 Also, try testing the hypothesis  using a moderated $t$--test and a wilcoxon
 test.
@@ -1401,11 +1418,11 @@ we compute the $t$--statistics and the associated tow--sided $p$--values using a
 normal distribution as the null model. The resulting $p$--value histogram looks
 good.
 
-<<shrinkage t ALL>>=
+<<shrinkage_t_ALL>>=
 sts <- shrinkt.stat(t(expALL), groupsALL)
 ### p-value using the normal distribution
 pval.st <- 2 - 2*pnorm(abs(sts))
-hist(pval.st, col = "lavender", main = "Histogram of p-values for 
+hist(pval.st, col = "lavender", main = "Histogram of p-values for
      shrinkage t statistics of the ALL data")
 @
 
@@ -1420,14 +1437,293 @@ table(pv.st.BH< 0.05)
 
 
 \subsubsection*{Exercise: Multiple testing for the ALL data}
-Try other multiple testing procedures like q--values on the $p$--values 
+Try other multiple testing procedures like q--values on the $p$--values
 obtained from the shrinkage t statistics. Can you gain power? Produce a $p$--value
 histogram where significant statistics are indicated by color-fill.
 
 
+\section{Indepdendent filtering of hypotheses}
+
+We have seen in the previous sections that multiple testing approaches,
+with thousands of tests, are often used in analyses of genome-scale data.
+For instance, we have seen that in the analyses of
+differential gene expression based on RNA-Seq or microarray data, a
+common approach is to apply a statistical test, one by one, to each of
+thousands of genes, with the aim of identifying those genes that have
+evidence for a statistical association of their expression
+measurements with the experimental covariate(s) of interest.
+
+Another instance is differential binding detection from ChIP-Seq data.  The
+idea of \emph{independent filtering} is to filter out those tests from
+the procedure that have no, or little chance of showing significant
+evidence, without even looking at their test statistic. Typically,
+this results in increased detection power at the same experiment-wide
+type I error, as measured in terms of the false discovery rate.  A
+good choice for a filtering criterion is one that
+\begin{enumerate}
+  \item\label{it:indp} is statistically independent from the test statistic
+    under the null hypothesis,
+  \item\label{it:corr} is correlated with the test statistic under the
+    alternative, and
+  \item\label{it:joint} does not notably change the dependence
+    structure --if there is any-- of the joint test statistics
+    (including those corresponding to true nulls and to true
+    alternatives).
+\end{enumerate}
+The benefit from filtering relies on property~\ref{it:corr}.
+The statistical validity of filtering relies on
+properties \ref{it:indp} and \ref{it:joint}.  For many practically useful combinations of
+filter criteria with test statistics, property~\ref{it:indp} is easy to prove.
+Property~\ref{it:joint} is more complicated, but rarely
+presents a problem in practice: if, for the multiple testing procedure that is being used,
+the correlation structure of the tests was acceptable without filtering, the filtering should
+not change that.
+
+
+%-----------------------------------------------------------
+\section{Example data set}
+%-----------------------------------------------------------
+For illustration, let us use the \Robject{pasillaGenes} dataset from the
+Bioconductor package \Rpackage{pasilla}; this is an RNA-Seq dataset
+from which we extract gene-level read counts for two replicate samples
+the were measured for each of two biological conditions: normally
+growing cells and cells treated with dsRNA against the \emph{Pasilla}
+mRNA, which led to RNAi interference (RNAi) mediated knockdown of the
+Pasilla gene product.
+%
+<<libraries,results='hide'>>=
+library("pasilla")
+data("pasillaGenes")
+@
+%
+We perform a standard analysis with \Rpackage{DESeq} to look for genes
+that are differentially expressed between the normal and
+Pasilla-knockdown conditions, indicated by the factor variable
+\Robject{condition}. In the generalized linear model (GLM) analysis,
+we adjust for an additional experimental covariate \Robject{type},
+which is however not of interest for the differential expression. For
+more details, please see the vignette of the \Rpackage{DESeq} package.
+%
+<<DESeq1,results='hide'>>=
+library("DESeq")
+<<DESeq2,cache=TRUE,results='hide'>>=
+cds  = estimateSizeFactors( pasillaGenes )
+cds  = estimateDispersions( cds )
+fit1 = fitNbinomGLMs( cds, count ~ type + condition )
+fit0 = fitNbinomGLMs( cds, count ~ type  )
+<<DESeq3,cache=TRUE>>=
+res = data.frame(
+filterstat = rowMeans(counts(cds)),
+pvalue    = nbinomGLMTest( fit1, fit0 ),
+row.names = featureNames(cds) )
+@
+%
+The details of the anove analysis are not important for the purpose of
+this vignette, the essential output is contained in the columns of the
+dataframe \Robject{res}:
+\begin{itemize}
+  \item \texttt{filterstat}: the filter statistic, here the average
+    number of counts per gene across all samples, irrespective of
+    sample annoation,
+  \item \texttt{pvalue}: the test $p$-values,
+\end{itemize}
+Each row of the dataframe corresponds to one gene:
+<<headres>>=
+dim(res)
+head(res)
+@
+
+%--------------------------------------------------
+\section{Qualitative assessment of the filter statistic}\label{sec:qual}
+%--------------------------------------------------
+<<pass,echo=FALSE,cache=TRUE>>=
+theta = 0.4
+pass = with(res, filterstat > quantile(filterstat, theta))
+@
+%
+First, consider Figure~\ref{figscatterindepfilt}, which shows that
+among the approximately \Sexpr{100*theta}\% of genes with lowest overall counts, \Robject{filterstat},
+there are essentially none that achieved an (unadjusted) $p$-value less than
+\Sexpr{signif(quantile(res$pvalue[!pass], 0.0001, na.rm=TRUE), 1)}
+(this corresponds to about \Sexpr{signif(-log10(quantile(res$pvalue[!pass], 0.0001, na.rm=TRUE)), 2)} on the $-\log_{10}$-scale).
+%
+<<figscatterindepfilt>>=
+with(res,
+  plot(rank(filterstat)/length(filterstat), -log10(pvalue), pch=16, cex=0.45))
+@
+<<figecdffilt>>=
+trsf = function(n) log10(n+1)
+plot(ecdf(trsf(res$filterstat)), xlab=body(trsf), main="")
+@
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.49\textwidth]{figure/figscatterindepfilt-1}
+\includegraphics[width=.49\textwidth]{figure/figecdffilt-1}
+\caption{Left: scatterplot of the rank (scaled to $[0,1]$) of the
+  filter criterion \Robject{filterstat} ($x$-axis) versus the negative
+  logarithm of the test \Robject{pvalue} ($y$-axis). Right: the
+  empirical cumulative distribution function (ECDF) shows the
+  relationships between the values of \Robject{filterstat} and its
+  quantiles.}
+\label{figscatterindepfilt}
+\end{figure}
+%
+This means that by dropping the 40\% genes with lowest \Robject{filterstat},
+we do not loose anything substantial from our subsequent
+results.
+
+For comparison, suppose you had chosen a less useful filter statistic,
+say, the gene identifiers interpreted as a decimal number. The
+analogous scatterplot to that of Figure~\ref{figscatterindepfilt} is
+shown in Figure~\ref{figbadfilter}.
+%
+<<badfilter1,cache=TRUE>>=
+badfilter = as.numeric(gsub("[+]*FBgn", "", rownames(res)))
+@
+<<badfilter2,echo=FALSE>>=
+stopifnot(!any(is.na(badfilter)))
+@
+<<figbadfilter>>=
+plot(rank(badfilter)/length(badfilter), -log10(res$pvalue), pch=16, cex=0.45)
+@
+\begin{figure}[ht]
+\centering
+\includegraphics[width=.49\textwidth]{figure/figbadfilter-1}
+\caption{Scatterplot analogous to Figure~\ref{figscatterindepfilt}, but with \Robject{badfilter}.}
+\label{figbadfilter}
+\end{figure}
+
+%--------------------------------------------------
+\section{How to choose the filter statistic and the cutoff?}\label{sec:indepfilterchoose}
+%--------------------------------------------------
+The \texttt{filtered\_p} function in the \Rpackage{genefilter} package
+calculates adjusted $p$-values over a range of possible filtering
+thresholds. Here, we call this function on our results from above and
+compute adjusted $p$-values using the method of Benjamini and Hochberg (BH)
+for a range of different filter cutoffs.
+%
+\begin{figure}[tb]
+\begin{center}
+\includegraphics[width=0.49\textwidth]{figure/figrejection-1}
+\includegraphics[width=0.49\textwidth]{figure/fignumreject-1}
+\caption{Left panel: the plot shows the number of rejections (i.\,e.\ genes detected as
+  differentially expressed) as a function of the FDR threshold
+  ($x$-axis) and the filtering cutoff $\theta$ (line colours,
+  specified as quantiles of the distribution of the
+  filter statistic). The plot is produced by the \texttt{rejection\_plot}
+  function. Note that the lines for $\theta=0\%$ and
+  $10\%$ are overplotted by the line for $\theta=20\%$, since for the
+  data shown here, these quantiles correspond all to the same set of
+  filtered genes (cf.~Figure~\ref{figscatterindepfilt}). Right panel:
+  the number of rejections at FDR=10\% as a function of
+  $\theta$.}
+\label{figrej}
+\end{center}
+\end{figure}
+%
+<<genefilter,results='hide'>>=
+library("genefilter")
+@
+
+<<pBH1,cache=TRUE>>=
+theta = seq(from=0, to=0.5, by=0.1)
+pBH = filtered_p(filter=res$filterstat, test=res$pvalue, theta=theta, method="BH")
+@
+
+<<pBH2>>=
+head(pBH)
+@
+%
+
+The rows of this matrix correspond to the genes (i.\,e., the rows of \Robject{res}) and
+the columns to the BH-adjusted $p$-values for the different possible
+choices of cutoff \Robject{theta}. A value of \Robject{NA} indicates
+that the gene was filtered out at the corresponding filter cutoff.
+The \Rfunction{rejection\_plot} function takes such a matrix and
+shows how rejection count ($R$) relates to the choice of cutoff for the
+$p$-values. For these data, over a reasonable range of FDR cutoffs, increased
+filtering corresponds to increased rejections.
+%
+<<figrejection,fig.width=5.5,fig.height=5.5>>=
+rejection_plot(pBH, at="sample",
+               xlim=c(0, 0.5), ylim=c(0, 2000),
+               xlab="FDR cutoff (Benjamini & Hochberg adjusted p-value)", main="")
+@
+The plot is shown in the left panel of Figure~\ref{figrej}.
+
+
+%------------------------------------------------------------
+\subsection{Choice of filtering cutoff}\label{choose:cutoff}
+%------------------------------------------------------------
+If we select a fixed cutoff for the adjusted $p$-values, we can also look more closely at
+the relationship between the fraction of null hypotheses filtered and the total number of
+discoveries. The \texttt{filtered\_R} function wraps \texttt{filtered\_p} and just returns
+rejection counts. It requires you to choose a particular $p$-value cutoff, specified
+through the argument \Robject{alpha}.
+%
+<<filtered_R1,cache=TRUE>>=
+theta = seq(from=0, to=0.8, by=0.02)
+rejBH = filtered_R(alpha=0.1, filter=res$filterstat, test=res$pvalue, theta=theta, method="BH")
+@
+
+Because overfiltering (or use of a filter which is inappropriate for the
+application domain) discards both false and true null hypotheses, very large
+values of $\theta$ reduce power in this example:
+
+<<fignumreject,fig.width=5.5,fig.height=5.5>>=
+plot(theta, rejBH, type="l",
+     xlab=expression(theta), ylab="number of rejections")
+@
+The plot is shown in the right panel of Figure~\ref{figrej}.
+
+%------------------------------------------------------------
+\subsection{Choice of filtering statistic}\label{choose:filterstat}
+%------------------------------------------------------------
+We can use the analysis of the previous section~\ref{choose:cutoff} also to inform
+ourselves about different possible choices of filter statistic. We construct a dataframe
+with a number of different choices.
+
+<<differentstats,cache=TRUE>>=
+filterChoices = data.frame(
+  `mean`   = res$filterstat,
+  `geneID` = badfilter,
+  `min`    = rowMin(counts(cds)),
+  `max`    = rowMax(counts(cds)),
+  `sd`     = rowSds(counts(cds))
+)
+rejChoices = sapply(filterChoices, function(f)
+  filtered_R(alpha=0.1, filter=f, test=res$pvalue, theta=theta, method="BH"))
+@
+
+<<colours,results='hide'>>=
+library("RColorBrewer")
+myColours = brewer.pal(ncol(filterChoices), "Set1")
+@
+
+<<figdifferentstats,fig.width=5.5,fig.height=5.5>>=
+matplot(theta, rejChoices, type="l", lty=1, col=myColours, lwd=2,
+        xlab=expression(theta), ylab="number of rejections")
+legend("bottomleft", legend=colnames(filterChoices), fill=myColours)
+@
+%
+The result is shown in Figure~\ref{figdifferentstats}. It indicates that for the data at
+hand, \Robject{mean}, \Robject{max} and \Robject{sd} provide similar performance, whereas
+the other choices are less effective.
+\begin{figure}[tb]
+\begin{center}
+\includegraphics[width=0.49\textwidth]{figure/figdifferentstats-1}
+\caption{The number of rejections at FDR=10\% as a function of
+  $\theta$ (analogous to the right panel in Figure~\ref{figrej}) for a number of different choices of the filter statistic.}
+\label{figdifferentstats}
+\end{center}
+\end{figure}
+
+
+\section{Weighting as an extension of filtering}
+
 \section{Answers to exercises}
 
-\subsubsection*{Exercise: Normal Model for a gene} 
+\subsubsection*{Exercise: Normal Model for a gene}
 
 Suppose that the distribution of the expression values for a
 gene is distributed according to $N(1.6, 0.42)$.
@@ -1449,14 +1745,14 @@ compare the sample mean and standard deviation to that of the population.
 << geneExp-Exercise, echo = TRUE, results ='hide' >>=
 # a
 #######################################################
-1 - pnorm(1.2, 1.6, 0.42) 
+1 - pnorm(1.2, 1.6, 0.42)
 
-# b 
-####################################################### 
+# b
+#######################################################
 pnorm(2, 1.6, 0.42) - pnorm(1.2, 1.6, 0.42)
 
-# c 
-#######################################################   
+# c
+#######################################################
 pnorm(2.4, 1.6, 0.42)  - pnorm(0.8, 1.6, 0.42)
 
 
@@ -1477,9 +1773,9 @@ sd(test.sample)
 
 \subsubsection*{Exercise: Rocky mountain spotted fever}
 
-In 747 cases of "Rocky Mountain spotted fever" from the western United States, 
-210 patients died. 
-Out of 661 cases from the eastern United States, 
+In 747 cases of "Rocky Mountain spotted fever" from the western United States,
+210 patients died.
+Out of 661 cases from the eastern United States,
 122 died. Is the difference statistically significant?
 Use a prop--test as well as a Fisher--test.
 
@@ -1497,12 +1793,12 @@ fisher.test(rbind(deaths, tot.cases-deaths))
 \xhrulefill{BiocBlue}{1pt}
 
 \subsubsection*{Exercise: Group comparison for gene GYPC}
-The gene GYPC plays an important role in regulating the mechanical 
+The gene GYPC plays an important role in regulating the mechanical
 stability of red cells. I can be found
-in line \Sexpr{grep("GYPC", anno_fusALL$SYMBOL)} of the expALL data set. (Try 
-\Rfunction{grep("GYPC", anno\textunderscore fusALL\$SYMBOL))}. 
+in line \Sexpr{grep("GYPC", anno_fusALL$SYMBOL)} of the expALL data set. (Try
+\Rfunction{grep("GYPC", anno\textunderscore fusALL\$SYMBOL))}.
 
-Test for the equality of the 
+Test for the equality of the
 means by an appropriate $t$--test. Is the experimental effect very strong?
 Also, try testing the hypothesis  using a moderated $t$--test and a wilcoxon
 test.
@@ -1514,10 +1810,10 @@ test.
 t.test(expALL[8197,] ~ groupsALL, var.equal=FALSE)
 
 ### strong difference between groups ...
-### confirmed by wilcoxon test 
+### confirmed by wilcoxon test
 wilcox.test(expALL[8197,] ~ groupsALL)
 
-### the moderated t-test is also significant 
+### the moderated t-test is also significant
 modt.stat(t(expALL), groupsALL)[8197]
 ### p-value using the normal distribution
 2 - 2*pnorm(abs(modt.stat(t(expALL), groupsALL)[8197]))
@@ -1528,7 +1824,7 @@ modt.stat(t(expALL), groupsALL)[8197]
 
 
 \subsubsection*{Exercise: Multiple testing for the ALL data}
-Try other multiple testing procedures like q--values on the $p$--values 
+Try other multiple testing procedures like q--values on the $p$--values
 obtained from the shrinkage t statistics. Can you gain power? Produce a $p$--value
 histogram where significant statistics are indicated by color-fill.
 
@@ -1542,16 +1838,16 @@ levels(significant) <- ifelse(levels(significant) , "yes", "no")
 table(significant)
 
 ggplot2::qplot(pval.st , xlab = "p-values of shrinkage t statistics",
-               main = "Histogram of p-values, 
-       golub data, q-value < 0.05", 
+               main = "Histogram of p-values,
+       golub data, q-value < 0.05",
        fill = significant)
 
 significant <- as.factor(pv.st.BH < 0.05)
 levels(significant) <- ifelse(levels(significant) , "yes", "no")
 
-(ggplot2::qplot(pval.st , xlab = "p-values of shrinkage t statistics", 
-                main = "Histogram of p-values, 
-       golub data, BH adjusted p-value < 0.05", 
+(ggplot2::qplot(pval.st , xlab = "p-values of shrinkage t statistics",
+                main = "Histogram of p-values,
+       golub data, BH adjusted p-value < 0.05",
        fill = significant)  + scale_fill_brewer(type = "qual", palette = 8))
 @
 
