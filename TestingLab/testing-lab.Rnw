@@ -161,7 +161,7 @@ the difference is strong relative to the variability between the measurements.
 
 The data might look like this:
 
-<<plantData>>=
+<<plantData, cache=FALSE>>=
 
 fBar <- function(x){
     tmp <- mean(x, na.rm = T)
@@ -1499,7 +1499,6 @@ mRNA, which led to RNAi interference (RNAi) mediated knockdown of the
 Pasilla gene product.
 %
 <<libraries,results='hide'>>=
-library("pasilla")
 data("pasillaGenes")
 @
 %
@@ -1543,7 +1542,7 @@ head(res)
 %--------------------------------------------------
 \subsection{Qualitative assessment of the filter statistic}\label{sec:qual}
 %--------------------------------------------------
-<<pass,echo=FALSE,cache=TRUE>>=
+<<pass,echo=FALSE,cache=FALSE>>=
 theta = 0.4
 pass = with(res, filterstat > quantile(filterstat, theta))
 @
@@ -1554,11 +1553,11 @@ there are essentially none that achieved an (unadjusted) $p$-value less than
 \Sexpr{signif(quantile(res$pvalue[!pass], 0.0001, na.rm=TRUE), 1)}
 (this corresponds to about \Sexpr{signif(-log10(quantile(res$pvalue[!pass], 0.0001, na.rm=TRUE)), 2)} on the $-\log_{10}$-scale).
 %
-<<figscatterindepfilt, results='hide'>>=
+<<figscatterindepfilt, fig.show = 'hide'>>=
 with(res,
   plot(rank(filterstat)/length(filterstat), -log10(pvalue), pch=16, cex=0.45))
 @
-<<figecdffilt>>=
+<<figecdffilt, fig.show = 'hide'>>=
 trsf = function(n) log10(n+1)
 plot(ecdf(trsf(res$filterstat)), xlab=body(trsf), main="")
 @
@@ -1584,13 +1583,13 @@ say, the gene identifiers interpreted as a decimal number. The
 analogous scatterplot to that of Figure~\ref{figscatterindepfilt} is
 shown in Figure~\ref{figbadfilter}.
 %
-<<badfilter1,cache=TRUE, results='hide'>>=
+<<badfilter1,cache=TRUE, fig.show = 'hide'>>=
 badfilter = as.numeric(gsub("[+]*FBgn", "", rownames(res)))
 @
 <<badfilter2,echo=FALSE>>=
 stopifnot(!any(is.na(badfilter)))
 @
-<<figbadfilter>>=
+<<figbadfilter, fig.show = 'hide'>>=
 plot(rank(badfilter)/length(badfilter), -log10(res$pvalue), pch=16, cex=0.45)
 @
 \begin{figure}[ht]
@@ -1648,7 +1647,7 @@ shows how rejection count ($R$) relates to the choice of cutoff for the
 $p$-values. For these data, over a reasonable range of FDR cutoffs, increased
 filtering corresponds to increased rejections.
 %
-<<figrejection,fig.width=5.5,fig.height=5.5, results='hide'>>=
+<<figrejection,fig.width=5.5,fig.height=5.5, fig.show = 'hide'>>=
 rejection_plot(pBH, at="sample",
                xlim=c(0, 0.5), ylim=c(0, 2000),
                xlab="FDR cutoff (Benjamini & Hochberg adjusted p-value)", main="")
@@ -1674,7 +1673,7 @@ Because overfiltering (or use of a filter which is inappropriate for the
 application domain) discards both false and true null hypotheses, very large
 values of $\theta$ reduce power in this example:
 
-<<fignumreject,fig.width=5.5,fig.height=5.5>>=
+<<fignumreject,fig.width=5.5,fig.height=5.5, fig.show = 'hide'>>=
 plot(theta, rejBH, type="l",
      xlab=expression(theta), ylab="number of rejections")
 @
@@ -1700,11 +1699,10 @@ rejChoices = sapply(filterChoices, function(f)
 @
 
 <<colours,results='hide'>>=
-library("RColorBrewer")
 myColours = brewer.pal(ncol(filterChoices), "Set1")
 @
 
-<<figdifferentstats,fig.width=5.5,fig.height=5.5, results='hide'>>=
+<<figdifferentstats,fig.width=5.5,fig.height=5.5, fig.show = 'hide'>>=
 matplot(theta, rejChoices, type="l", lty=1, col=myColours, lwd=2,
         xlab=expression(theta), ylab="number of rejections")
 legend("bottomleft", legend=colnames(filterChoices), fill=myColours)
@@ -1713,7 +1711,7 @@ legend("bottomleft", legend=colnames(filterChoices), fill=myColours)
 The result indicates that for the data at
 hand, \Robject{mean}, \Robject{max} and \Robject{sd} provide similar performance, whereas
 the other choices are less effective.
-\begin{figure}[tb]
+\begin{figure}[h!tb]
 \begin{center}
 \includegraphics[width=0.49\textwidth]{figure/figdifferentstats-1}
 \caption{The number of rejections at FDR=10\% as a function of
