@@ -22,7 +22,7 @@ opts_chunk$set(echo=TRUE,tidy=FALSE,include=TRUE,
 
 
 
-\title{Statistical Testing, Including Multiple Testing}
+\title{Statistical Testing, Including Multiple Testing and Filtering / Weighting}
 \usepackage[T1]{fontenc}
 %\usepackage{enumerate}
 \usepackage{amsmath, amssymb, amstext}
@@ -54,6 +54,7 @@ opts_chunk$set(echo=TRUE,tidy=FALSE,include=TRUE,
 %
 <<required packages and data, echo = TRUE, message = FALSE>>=
 
+set.seed(999)
 
 library(gplots)
 library(RColorBrewer)
@@ -67,9 +68,15 @@ library(qvalue)
 library(st)
 library(ALL)
 library(hgu95av2.db)
-set.seed(999)
 library(genefilter)
 library(IHW)
+library("DESeq")
+library("ggplot2")
+library("methods")
+library("airway")
+library("DESeq2")
+data("airway")
+
 @
 %
 
@@ -1481,10 +1488,10 @@ not change that.
 
 
 %-----------------------------------------------------------
-\section{Example data set}
+\subsection{Example data set}
 %-----------------------------------------------------------
 For illustration, let us use the \Robject{pasillaGenes} dataset from the
-Bioconductor package \Rpackage{pasilla}; this is an RNA-Seq dataset
+Bioconductor package \Biocpkg{pasilla}; this is an RNA-Seq dataset
 from which we extract gene-level read counts for two replicate samples
 the were measured for each of two biological conditions: normally
 growing cells and cells treated with dsRNA against the \emph{Pasilla}
@@ -1503,23 +1510,23 @@ Pasilla-knockdown conditions, indicated by the factor variable
 we adjust for an additional experimental covariate \Robject{type},
 which is however not of interest for the differential expression. For
 more details, please see the vignette of the \Rpackage{DESeq} package.
-%
-<<DESeq1,results='hide'>>=
-library("DESeq")
-<<DESeq2,cache=TRUE,results='hide'>>=
-cds  = estimateSizeFactors( pasillaGenes )
-cds  = estimateDispersions( cds )
-fit1 = fitNbinomGLMs( cds, count ~ type + condition )
-fit0 = fitNbinomGLMs( cds, count ~ type  )
+
+<<DESeq2,cache=TRUE,results='hide', warning = FALSE>>=
+cds  <- estimateSizeFactors( pasillaGenes )
+cds  <- estimateDispersions( cds )
+fit1 <- fitNbinomGLMs( cds, count ~ type + condition )
+fit0 <- fitNbinomGLMs( cds, count ~ type  )
+@
+
 <<DESeq3,cache=TRUE>>=
-res = data.frame(
-filterstat = rowMeans(counts(cds)),
-pvalue    = nbinomGLMTest( fit1, fit0 ),
-row.names = featureNames(cds) )
+res <- data.frame(
+filterstat <- rowMeans(counts(cds)),
+pvalue    <- nbinomGLMTest( fit1, fit0 ),
+row.names <-featureNames(cds) )
 @
 %
-The details of the anove analysis are not important for the purpose of
-this vignette, the essential output is contained in the columns of the
+The details of the anove analysis are not important for explaing the benefits of
+filtering, the essential output is contained in the columns of the
 dataframe \Robject{res}:
 \begin{itemize}
   \item \texttt{filterstat}: the filter statistic, here the average
@@ -1534,20 +1541,20 @@ head(res)
 @
 
 %--------------------------------------------------
-\section{Qualitative assessment of the filter statistic}\label{sec:qual}
+\subsection{Qualitative assessment of the filter statistic}\label{sec:qual}
 %--------------------------------------------------
 <<pass,echo=FALSE,cache=TRUE>>=
 theta = 0.4
 pass = with(res, filterstat > quantile(filterstat, theta))
 @
 %
-First, consider Figure~\ref{figscatterindepfilt}, which shows that
+First, consider the Figure below, which shows that
 among the approximately \Sexpr{100*theta}\% of genes with lowest overall counts, \Robject{filterstat},
 there are essentially none that achieved an (unadjusted) $p$-value less than
 \Sexpr{signif(quantile(res$pvalue[!pass], 0.0001, na.rm=TRUE), 1)}
 (this corresponds to about \Sexpr{signif(-log10(quantile(res$pvalue[!pass], 0.0001, na.rm=TRUE)), 2)} on the $-\log_{10}$-scale).
 %
-<<figscatterindepfilt>>=
+<<figscatterindepfilt, results='hide'>>=
 with(res,
   plot(rank(filterstat)/length(filterstat), -log10(pvalue), pch=16, cex=0.45))
 @
@@ -1577,7 +1584,7 @@ say, the gene identifiers interpreted as a decimal number. The
 analogous scatterplot to that of Figure~\ref{figscatterindepfilt} is
 shown in Figure~\ref{figbadfilter}.
 %
-<<badfilter1,cache=TRUE>>=
+<<badfilter1,cache=TRUE, results='hide'>>=
 badfilter = as.numeric(gsub("[+]*FBgn", "", rownames(res)))
 @
 <<badfilter2,echo=FALSE>>=
@@ -1594,7 +1601,7 @@ plot(rank(badfilter)/length(badfilter), -log10(res$pvalue), pch=16, cex=0.45)
 \end{figure}
 
 %--------------------------------------------------
-\section{How to choose the filter statistic and the cutoff?}\label{sec:indepfilterchoose}
+\subsection{How to choose the filter statistic and the cutoff?}\label{sec:indepfilterchoose}
 %--------------------------------------------------
 The \texttt{filtered\_p} function in the \Rpackage{genefilter} package
 calculates adjusted $p$-values over a range of possible filtering
@@ -1621,9 +1628,6 @@ for a range of different filter cutoffs.
 \end{center}
 \end{figure}
 %
-<<genefilter,results='hide'>>=
-library("genefilter")
-@
 
 <<pBH1,cache=TRUE>>=
 theta = seq(from=0, to=0.5, by=0.1)
@@ -1644,16 +1648,16 @@ shows how rejection count ($R$) relates to the choice of cutoff for the
 $p$-values. For these data, over a reasonable range of FDR cutoffs, increased
 filtering corresponds to increased rejections.
 %
-<<figrejection,fig.width=5.5,fig.height=5.5>>=
+<<figrejection,fig.width=5.5,fig.height=5.5, results='hide'>>=
 rejection_plot(pBH, at="sample",
                xlim=c(0, 0.5), ylim=c(0, 2000),
                xlab="FDR cutoff (Benjamini & Hochberg adjusted p-value)", main="")
 @
-The plot is shown in the left panel of Figure~\ref{figrej}.
+The plot is shown in the left panel of the Figure.
 
 
 %------------------------------------------------------------
-\subsection{Choice of filtering cutoff}\label{choose:cutoff}
+\subsubsection{Choice of filtering cutoff}\label{choose:cutoff}
 %------------------------------------------------------------
 If we select a fixed cutoff for the adjusted $p$-values, we can also look more closely at
 the relationship between the fraction of null hypotheses filtered and the total number of
@@ -1677,7 +1681,7 @@ plot(theta, rejBH, type="l",
 The plot is shown in the right panel of Figure~\ref{figrej}.
 
 %------------------------------------------------------------
-\subsection{Choice of filtering statistic}\label{choose:filterstat}
+\subsubsection{Choice of filtering statistic}\label{choose:filterstat}
 %------------------------------------------------------------
 We can use the analysis of the previous section~\ref{choose:cutoff} also to inform
 ourselves about different possible choices of filter statistic. We construct a dataframe
@@ -1700,13 +1704,13 @@ library("RColorBrewer")
 myColours = brewer.pal(ncol(filterChoices), "Set1")
 @
 
-<<figdifferentstats,fig.width=5.5,fig.height=5.5>>=
+<<figdifferentstats,fig.width=5.5,fig.height=5.5, results='hide'>>=
 matplot(theta, rejChoices, type="l", lty=1, col=myColours, lwd=2,
         xlab=expression(theta), ylab="number of rejections")
 legend("bottomleft", legend=colnames(filterChoices), fill=myColours)
 @
 %
-The result is shown in Figure~\ref{figdifferentstats}. It indicates that for the data at
+The result indicates that for the data at
 hand, \Robject{mean}, \Robject{max} and \Robject{sd} provide similar performance, whereas
 the other choices are less effective.
 \begin{figure}[tb]
@@ -1719,7 +1723,136 @@ the other choices are less effective.
 \end{figure}
 
 
-\section{Weighting as an extension of filtering}
+\section{Weighting as an extension of filtering --- IHW}
+
+In previous section, we introduced gene--wise filtering, which in or excludes genes based on a
+filter statistic. This can be seen as p--value weighting wiht  0/1 weights, wher all p-values
+either get a weight of 0 or 1.
+
+Similarly, we can try to choose continous weights for the p--values in order to increase the
+detection power. IHW (Independent Hypothesis Weighting) tries to achieve exactly this: In addition
+to the p--values it allows you to specify a covariate for each test.
+The covariate should be informative of the power or prior probability of each individual test,
+but is chosen such that the p-values for those hypotheses that are truly null do not
+depend on the covariate, see \href{http://biorxiv.org/content/early/2015/12/13/034330}{
+Data-driven hypothesis weighting increases detection power in big data analytics}.
+
+The the input of IHW is the following:
+
+\begin{itemize}
+    \item  a vector of p-values (of length $m$)
+    \item  a matching vector of covariates
+    \item  the significance level $\alpha \in (0,1)$ at which the False Discovery Rate should be controlled.
+\end{itemize}
+
+
+IHW then calculates weights for each p-value
+(non-negative numbers $w_i \geq 0$ such that $\sum_{i=1}^m w_i = m$).
+IHW also returns a vector of adjusted p-values by applying the procedure
+of Benjamini Hochberg to the weighted p-values $P^\text{weighted}_i = \frac{P_i}{w_i}$.
+
+The weights allow different prioritization of the individual hypotheses,
+based on their covariate. A hypothesis with weight > 1 gets prioritized
+in the testing procedure, and the higher the weight the higher the prioritization.
+On the other hand, a hypothesis with weight equal to
+0 cannot be rejected and essentially is filtered out of the procedure.
+
+We will show now how to use the IHW package in analysing for RNA-Seq
+differential gene expression and then also mention some other examples
+where the method is applicable. We use \Biocpkg{airway} RNA-Seq dataset
+and \Biocpkg{DESeq2} .
+
+\section{HW and RNA--Seq data}
+
+<<Deseq2, message=FALSE, warning=FALSE>>=
+
+dds <- DESeqDataSet(se = airway, design = ~ cell + dex)
+dds <- DESeq(dds)
+de_res <- as.data.frame(results(dds))
+@
+
+The output is a `data.frame` object, which includes the following columns for each gene:
+
+<<>>=
+colnames(de_res)
+@
+
+In particular, we have p-values and baseMean (i.e., the mean of normalized counts) for each gene.
+As argued in the DESeq2  paper, these two statistics are approximately independent under
+the null hypothesis. Thus we have all the ingredient necessary for a IHW analysis (p-values and covariates),
+which we will apply at a significance level 0.1.
+
+First load IHW:
+<<message=FALSE, warning=FALSE>>=
+ihw_res <- ihw(pvalue ~ baseMean,  data=de_res, alpha = 0.1)
+@
+
+This returns an object of the class `ihwResult`. We can get e.g. the total number of rejections.
+
+<<>>=
+rejections(ihw_res)
+@
+
+And we can also extract the adjusted p-values:
+<<>>=
+head(adj_pvalues(ihw_res))
+sum(adj_pvalues(ihw_res) <= 0.1, na.rm = TRUE) == rejections(ihw_res)
+@
+
+We can compare this to the result of applying the method of Benjamini and Hochberg to the p-values only:
+
+<<>>=
+padj_bh <- p.adjust(de_res$pvalue, method = "BH")
+sum(padj_bh <= 0.1, na.rm = TRUE)
+@
+
+We thus get a lot more rejections! How did we get this power? Essentially it was possible
+by assigning appropriate weights to each hypothesis. We can retrieve the weights as follows:
+
+<<>>=
+head(weights(ihw_res))
+@
+
+
+Internally, what happened was the following: We split the hypotheses into $n$ different strata (here $n=22$)
+based on increasing value of baseMean and we also randomly split them into $k$ folds (here $k=5$).
+Then, for each combination of fold and stratum, we learned the weights. The discretization into
+strata facilitates the estimation of the distribution function conditionally on the covariate
+and the optimization of the weights. The division into random folds helps us to avoid "overfitting"
+the data, something which can result in loss of control of the False Discovery Rate.
+
+In particular, each hypothesis test gets assigned a weight depending on the combination
+of its assigned fold and stratum.
+
+We can also see this internal representation of the weights as a ($n$ X $k$) matrix:
+
+<<>>=
+weights(ihw_res, levels_only=TRUE)
+@
+
+Finally, IHW contains a convenience function to visualize the estimated weights:
+
+<<plot_ihw_res, fig.width = 5, fig.height = 3>>=
+plot(ihw_res)
+@
+
+For each hypothesis, one can visually determine its weight by identifying its stratum
+and the fold it was assigned to. In the example above, we see that the general trend
+is driven by the covariate (stratum) and not as much by the fold. Recall that IHW
+assumes that the "optimal" weights should be a function of the covariate
+(and hence the stratum) only. Therefore, the weight functions calculated
+on random (overlapping) splits of the data should behave similarly,
+while there should be no trend driven by the folds. Also as expected,
+genes with very low baseMean count get assigned a weight of 0, while genes
+with high baseMean count get prioritized.
+
+As a further convenience for further work, a ihwResult object can be converted to a data.frame as follows:
+
+<<>>=
+ihw_res_df <- as.data.frame(ihw_res)
+colnames(ihw_res_df)
+@
+
 
 \section{Answers to exercises}
 
