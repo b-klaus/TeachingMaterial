@@ -1762,7 +1762,7 @@ differential gene expression and then also mention some other examples
 where the method is applicable. We use \Biocpkg{airway} RNA-Seq dataset
 and \Biocpkg{DESeq2} .
 
-\section{HW and RNA--Seq data}
+\subsection{IHW and the airway RNA--Seq data}
 
 <<Deseq2, message=FALSE, warning=FALSE>>=
 
@@ -1812,6 +1812,9 @@ by assigning appropriate weights to each hypothesis. We can retrieve the weights
 <<>>=
 head(weights(ihw_res))
 @
+
+
+\subsection{Computation of the weights}
 
 
 Internally, what happened was the following: We split the hypotheses into $n$ different strata (here $n=22$)
