@@ -74,6 +74,8 @@ library(locfit)
 library(stringr)
 library(sva)
 library(limma)
+library(corpcor)
+
 
 ggplotRegression <- function (fit) {
 
@@ -1160,18 +1162,365 @@ dataGG = data.frame(PC1 = PCA$x[,1], PC2 = PCA$x[,2],
 As we can see, the sex effect has been removed. The function \Rfunction{ComBat}
 from the \Biocpkg{sva} implements a more sophistaced method for the removal
 of known batches that adjusts the variances in a addition to removal of batch
-specific means.
+specific means. For additional details see e.g. \href{http://genomicsclass.github.io/book/pages/adjusting_with_linear_models.html}{this page}.
 
 
 \subsection{Tackling "unknown" batches and other unwanted variation}
 
+In order to illustrate latent batch effects we will look
+at the *stockori* data set. It contains genotype information for
+several plant samples collected in different countries. We
+also have a variable \Rcode{Floweringtime} indicating the length
+of flowering. This data has been provided by Oliver Stegle (EBI).
+
+\subsubsection{Overview of the Stockori floweringtime dataset}
+
+\begin{itemize}
+    \item 697 individuals (plants)
+    \item 149 genotypes
+    \item Floweringtime
+    \item Country for each plant
+
+\end{itemize}
+
+
+
+\subsection{Importing the data}
+
+We first load the data and then split the input data
+into genotypes (coded by 0, 1, 2 corresponding to homozygous reference,
+heterozygous alternative and homozygous alternative respectively).
+
+We then center and scale the genotype variables for the upcoming
+analyses. This is a common preprocessing step.
+
+<<inspect_stockori_data>>=
+stockori <- read.csv("http://www-huber.embl.de/users/klaus/BasicR/stockori.csv")
+stockori[sample(dim(stockori)[1],5), 1:10]
+
+stockori_gtypes <- scale(as.matrix(stockori[, -seq(1,3)]))
+stockori_anno <- stockori[, seq(1,3)]
+stockori_anno$flow = factor(stockori_anno$flowering_binary,
+                                           labels=c("short", "long"))
+@
+
+
+\subsection{PCA Analysis of the  stockori data}
+
+We calculate the PCA and and a singular value decomposition (more on that later)
+of the data.
+
+<<stockori_PCA>>=
+stock_PCA = prcomp(stockori_gtypes, center = F, scale = F)
+stock_SVD <- fast.svd(stockori_gtypes)
+@
+
+We now plot the PCs and color the points by origin. We take the country
+annotation and simplify it a little bit: Looking at the PCA plot, we can
+clearly see a strong clustering of the plants by their origin. This is not
+surprising, since plants cannot move easily, so their genotypes are expected
+to be strongly associated with their country of origin.
+
+One of the pioneering papers discussing these issues and correcting
+for this bias is
+\href{https://dx.doi.org/10.1038/ng1847}{Price et. al. -Principal components analysis corrects for stratification in genome-wide association studies** - Nature Genetics, 2006}
+
+They called the PCs "axis of variation". Below, we plot a bar
+chart of the countries of origin and the principal components.
+From the inspection of the plot, we can see that the first axis
+of variation differentiates between central Europe and the
+rest of the world, while the second one separates the US from
+the UK.
+
+
+<<plot_PCA_stockpori>>=
+
+#table(stockori_anno$country)
+
+  pal_func <- function(n){
+  rep(brewer.pal(12, name ="Set3")[-9],(n %/% 11 + 1))[seq_len(n)]
+  }
+  cls = pal_func(length(levels(stockori_anno$country)))
+
+
+country =  stockori_anno$country
+country = ifelse(country %in% c("Cape Verdi Islands","India",
+                   "Kazakhstan", "Lybia", "New Zealand",
+                   "Tadjikistan", "Unknown", "USA"), "RestOfWorld", "Europe" )
+
+country[stockori_anno$country == "Germany" ] <- "Germany"
+country[stockori_anno$country == "UK" ] <- "UK"
+country[stockori_anno$country == "USA" ] <- "USA"
+country[stockori_anno$country == "Russia" ] <- "Russia"
+
+
+ggBar <- qplot(stockori_anno$country, fill = stockori_anno$country)
+
+
+dataGG <- data.frame(PC1 = stock_PCA$x[,1], PC2 = stock_PCA$x[,2],
+                    PC3 = stock_PCA$x[,3], PC4 = stock_PCA$x[,4],
+                    PC5 = stock_PCA$x[,5], PC6 = stock_PCA$x[,6],
+                    country = stockori_anno$country,
+                    flowering = stockori_anno$flow)
+
+qplot(PC1, PC2, data = dataGG, label = country, geom = "text", color = country,
+      main = "PCA for the Stockori data")
+
+@
+
+
+\subsection{Singular value decomposition (SVD)}
+
+
+To understand the EIGENSTRAT procedure proposed by Price et. al.
+we first need to have an idea about the SVD. If we denote our
+genotype matrix by $\mathbf{Y}$, we can compute a decomposition of it as
+follows:
+
+$$
+\mathbf{Y_{n\times p} = U \Sigma V^T}
+$$
+This is called the singular value decomposition of $\mathbf{Y}$. If $\mathbf{Y}$
+has $n$ rows (the samples) and $p$ columns (the variables) then $U$ has dimension
+$n \times min(n,p)$ and $V$ has dimension $p \times min(n,p)$. The columns of
+$\mathbf{U}$ and $\mathbf{V}$ are orthonormal, i.e. $\mathbf{U^T} \mathbf{U} = I$
+and $\mathbf{V^T} \mathbf{V} = I$. $\mathbf{\Sigma}$ is a diagonal matrix
+containing the so-called singular values. The SVD is commonly used to compute the
+PCA. In fact, the matrix $\mathbf{V} = (v_1, \dotsc, v_p)$ contains
+the \textbf{loadings} and the matrix $U \Sigma$ contains the \textbf{principal components}
+or \textbf{principal component scores} since:
+
+$$
+\mathbf{Y_{n\times p} V = U \Sigma }
+$$
+
+Note that $\mathbf{V}$ contains actually the eigenvectors of the correlation matrix of
+$\mathbf{Y}$ proportional to $\mathbf{Y^T}\mathbf{Y}$ if the variables centered
+and scaled. Hence, the *loadings* are sometimes referred to as \textbf{eigenvectors}.
+
+For illustrative purposes, we create a PCA from the SVD.
+<<PCs_from_SVD >>=
+PCA_from_SVD <- stockori_gtypes %*% stock_SVD$v
+
+dataGG = data.frame(PC_SVD1 = PCA_from_SVD[,1], PC_SVD2 = PCA_from_SVD[,2],
+                    PC_SVD3 = PCA_from_SVD[,3], PC_SVD4 = PCA_from_SVD[,4],
+                    PC_SVD5 = PCA_from_SVD[,5], PC_SVD6 = PCA_from_SVD[,6],
+                    country = country, flowering = stockori_anno$flow)
+
+qplot(PC_SVD1, PC_SVD2, data = dataGG, label = country, geom = "text",
+      color = country, main ="PCA from SVD")
+@
+
+Note that the PCs are uniquely determined up to their sign, which can be chosen
+in an arbitrary way, so that the PCA plot created from the SVD is a mirrored
+version of the original one in this case.
+
+
+\subsection{How can we use SVD to correct for batch effects?}
+
+We have measurements for $p$ genotypes and $n$ samples in a matrix $Y_{n\times p}$.
+Suppose we suspect that a batch effect is responsible for most the variability.
+We know that some samples fall in one batch and the rest in an other, but
+we don't know which sample is in which batch. Can we discover the batch?
+The columns of $\mathbf{V}$ are very helpful for this ...
+
+If we assume that many genotypes will have a different average in one
+batch compared to the other this will introduce a high genotype variation,
+thus we can rephrase this problem as searching for a \textbf{latent genotpye variable}
+having \textbf{maximal variance}. This variable should then capture most of the batch
+effect.
+
+In fact there is a mathematical result that $Y_{n\times p} v_1$ will
+have maximum variance among all vectors $v$ satisfying $v^Tv = 1$.
+Thus subtracting the first principal component from the data $Y_{n\times p}$
+like this:
+
+$$
+r_{n\times p}=Y_{n \times p} - Y_{n \times p} v_1 v_1^T
+$$
+
+should remove a great deal of the unwanted variation.
+In the formula above we substract a rank 1 approximation to the data matrix
+from the original data.
+
+Then using the the vector $v_2$  results in the most variable
+vector $r_{n\times p} v_2$ and so on. Thus, an iterative subtraction
+of principal components from the data will correct for
+batch effects through the removal of  \textbf{latent variables}.
+
+However, note that we did not take the flowering
+indicator into account here, e.g. we might remove
+a lot of the differences between the two groups of plants as well by
+simply subtracting principal components. The algorithms EIGENSTRAT
+and SVA try to deal with this.
+
+
+
+\subsection{The EIGENSTRAT procedure}
+
+The idea of the EIGENSTRAT procedure is
+to use a certain number of $k$ standardized principal components
+in a regression model as \textbf{latent variables}. Let the $p$ th column
+(the $p$ th genotype) denoted by $Y_p$  the matrix of inferred orthonormal principal
+components or "\textbf{axes of variation}"
+by $\mathbf{U}$ and their $l$ th column by $u_l$. Then the following regression model
+is fit to each genotype $p$ separately:
+
+$$
+Y_p = \beta(p)_0 + g\beta(p)_1 + \sum_{l = 1}^k  u_l r(p)_l
+$$
+
+Here $g$ is the flowering indicator (e.g. 0 for short and 1 for long)
+and $\beta_0(p)$, $\beta_1(p)$ and $r_l$ are regression coefficients to be estimated.
+$\beta_1(p)$ corresponds to the difference in genotype between short and long flowering plants.
+
+Note that by estimating the the coefficients $r(p)$,
+we take the \textbf{signal of interest} $\beta(p)_0 + g\beta(p)_1$ into account. We
+call them 'rotation' in the following code and set the number of components to 10.
+
+<<EIGENSTRAT_calculations>>=
+no_comp <- 10
+
+mod <- model.matrix(~flow, data=stockori_anno)
+modEig <- cbind(mod, stock_SVD$u[,seq_len(no_comp)])
+stock_EIG_rotation <- lmFit(t(stockori_gtypes),
+                                  modEig)$coefficients[,-c(1,2)]
+
+stock_EIG_adj  <- stockori_gtypes - tcrossprod(stock_SVD$u[,seq_len(no_comp)],
+                                               stock_EIG_rotation)
+## alternative way of computation
+stock_EIG_adj <- stockori_gtypes -  Reduce("+", lapply(seq_len(no_comp),
+         function(k){tcrossprod(stock_SVD$u[,k], stock_EIG_rotation[,k])}))
+@
+
+\subsection{The Surrage Variable Analysis (SVA) Algorithm}
+
+The EIGENSTRAT procedure has an apparent weakness: if the signal is
+strong, using the orthonormal principal components as obtained
+from the SVD as latent variable will remove much of the signal as well.
+This usually does not seem to be a problem for genetic association
+studies, were the signal is weak but a method that does not rely on
+a weak signal is desirable.
+
+The SVA algorithm tries to overcome this weakness: the estimation of the
+SVD is taking the signal of the model into account, in our case the grouping
+variable. Full details of the algorithm can be found in the supplement of
+\href{https://dx.doi.org/10.1038/pnas.0808709105}{Leek JT and Storey JD - A general framework for multiple testing dependence- PNAS, 2008}
+
+
+The SVA algorithm also has built in algorithm to estimate the number
+of latent (surrogate) variables . Interestingly, it doesn't find any in our data set.
+Thus, we set the number manually.
+
+<<SVA_calculations>>=
+mod0 <- model.matrix(~1, data = stockori_anno)
+n_sv <- num.sv(t(stockori_gtypes), mod, method="leek")
+n_sv # does not find anything
+svaobj <- sva(t(stockori_gtypes), n.sv = no_comp, mod, mod0, method="irw")
+
+modSVA <- cbind(mod,svaobj$sv)
+stock_sva_rotation <- lmFit(t(stockori_gtypes),
+                                  modSVA)$coefficients[,-c(1,2)]
+stock_sva_adj <- stockori_gtypes - tcrossprod(svaobj$sv, stock_sva_rotation)
+@
+
+
+
+
+\subsection{Compare corrections from EIGENSTRAT and SVA}
+
+We can now produce a plot of the principal components of the data again to check
+whether the strong clustering by country of origin has be alleviated.
+
+<<EIGENSTRAT_and_SVA>>=
+
+stock_sva_adj_PCA <-prcomp(stock_sva_adj)
+stock_EIG_adj_PCA <-prcomp(stock_EIG_adj)
+
+
+dataGG = data.frame(PC_adj_SVA1 = stock_sva_adj_PCA$x[,1],
+                    PC_adj_SVA2 = stock_sva_adj_PCA$x[,2],
+                    PC_adj_EIG1 = stock_EIG_adj_PCA$x[,1],
+                    PC_adj_EIG2 = stock_EIG_adj_PCA$x[,2],
+        country = country, flowering = stockori_anno$flow)
+qplot(PC_adj_SVA1 , PC_adj_SVA2, data = dataGG, label = country, geom = "text",
+      color = country, main ="SVA corrected data")
+
+qplot(-PC_adj_EIG1 , -PC_adj_EIG2, data = dataGG, label = country, geom = "text",
+      color = country, main ="EIGENSTRAT corrected data")
+@
+
+As we can see, both EIGENSTRAT and SVA are successful in removing the country
+dependency.
+
+\subsection{The "naive" correction}
+
+The naive correction for batch effects consists in simply removing principal
+components from the data without taking the signal into account. This is also
+quite often performed in real data analysis. We also
+check how this works out for our data set.
+
+<<naive_correction_using_only_SVD>>=
+stock_naive_adj <- stockori_gtypes -
+  Reduce("+", lapply(seq_len(no_comp),
+         function(k){stock_SVD$d[k]*tcrossprod(stock_SVD$u[,k],
+                                               stock_SVD$v[,k])}))
+stock_naive_adj_PCA <-prcomp(stock_naive_adj)
+
+
+dataGG = data.frame(PC_adj_naive1 = stock_naive_adj_PCA$x[,1],
+                    PC_adj_naive2 = stock_naive_adj_PCA$x[,2],
+        country = country, flowering = stockori_anno$flow)
+qplot(PC_adj_naive1 ,PC_adj_naive2, data = dataGG, label = country, geom = "text",
+      color = country, main ="naively  corrected data using only the SVD")
+
+@
+
+While e.g.  SVA seems to preseverve some outliers (3 samples from Germany)
+the naive method removes a lot more variation and leads to a complete loss
+of any clustering.
 
 
 \subsection{Best practices and caveats in batch effect removal}
 
+While the batch effect removal methods often seem to be magic procedure,
+they have to be applied carefully. In particular, using the cleaned data
+directly can lead to false positive results and exagarrated effects.
+
+The best thing is avoid the use of the cleaned data directly (except for
+visualisation purposes) and rather include the estimated latent variables
+or batch effects into a linear model. Two recent papers disucss these caveats
+for known and unknown batches respectively.
+
+
 \begin{itemize}
-    \item Not recommended in linear models, always include latent variables
+\item \href{https://dx.doi.org/10.1093/biostatistics/kxv027}{Nygaard et. al. - Methods that remove batch effects while retaining group differences may lead to exaggerated confidence in downstream analyses - 2015}
+\item \href{https://dx.doi.org/10.1186/s12859-015-0808-5}{Jaffe et. al. -Practical impacts of genomic data cleaning on biological discovery using surrogate variable analysis - 2015
+}
+
 \end{itemize}
+
+\subsubsection*{Additional remarks}
+
+\begin{itemize}
+    \item Most of the literature on batch effect removal looks a t $p \times n$
+matrix, while we used a $n \times p$ notation throughout since this is the
+natural input for a PCA.
+
+    \item Actually, SVA fits a multivariate regression model to obtain the
+rotation matrix, while in the above code we fit a model to each genotype
+separately. However, the authors of the SVA package suggest using the latent
+variables in a limma analysis, so this should be okay.
+
+    \item If we consider the latent variables as random, it can be seen that
+they introduce a correlation structure, this roughly corresponds to the factor
+analysis model and explains why Leek and Story call the latent component
+of the model a dependence kernel. Mike Love and Rafael Irizarry provide
+an elaboration on this point  \href{http://genomicsclass.github.io/book/pages/adjusting_with_factor_analysis.html}{here}.
+
+
+\end{itemize}
+
 
 
 \section{Answers to Exercises}
