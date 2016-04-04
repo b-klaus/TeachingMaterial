@@ -72,6 +72,8 @@ library(MASS)
 library(vegan)
 library(locfit)
 library(stringr)
+library(sva)
+library(limma)
 
 ggplotRegression <- function (fit) {
 
@@ -305,7 +307,7 @@ cell as to make them comparable across cells.
 This gives us a set of  points that we can then plot.
 
 <<r scalingSingleCell >>=
-scData <- t(read.csv("nbt.3102-S7.csv",
+scData <- t(read.csv("http://www-huber.embl.de/users/klaus/nbt.3102-S7.csv",
             row.names  = 1))
 
 
@@ -532,7 +534,7 @@ The data set ``bodyfat'', which  contains variables that can be used to build mo
 
 First, we load in the data set, inspect it a bit and attach it
 <<loadBodyfat,   echo = TRUE>>=
-load("bodyfat.rda")
+load(url("http://www-huber.embl.de/users/klaus/BasicR/bodyfat.rda"))
 dim   (bodyfat)    # how many rows and columns in the dataset?
 names (bodyfat)    # names of the columns)
 @
@@ -777,7 +779,7 @@ with a very low number of counts anyway.
 The data is stored as an ExpressionSet object.
 
 <<getBottomly Data, echo = TRUE>>=
-load("bottomly_eset.RData")
+load(url("http://www-huber.embl.de/users/klaus/bottomly_eset.RData"))
 bottomly.eset
 pData(bottomly.eset)
 idx.nn <- apply(exprs(bottomly.eset), 1, function(x) { all(x > 5)})
@@ -1117,12 +1119,60 @@ by
 
 \subsection{Removing known batches}
 
-As we have seen above, we have a sex--related batch effect in our RNA--Seq
-data. We
+As we have seen above, we have a sex--related batch effect in our simulated
+RNA--Seq data. We saw a clear clustering by sex. A simple way to remove known
+batches is to fit a regression model that includes the batches to the data, and
+then substract the coefficients that belong the batch effects. We can use the
+function \Rfunction{lmFit} from the \Biocpkg{limma} to fit a linear model
+to each gene of our simulated data simultaneously and then simply substract the
+estimated coefficients that belong to the batch effects from the data. The function
+\Rfunction{removeBatchEffect} in  \Biocpkg{limma} implements this strategy.
+We specify a batch effect and then a design matrix that incorporates the effects
+that we do not want to remove (the experimetnal condition in this case).
+
+
+<<remove_batch_sim>>=
+cleaned_data <- removeBatchEffect(rldSim,
+                                  batch = as.character(colData(dds)$sex),
+                           design =  model.matrix( ~ colData(dds)$condition))
+
+pc_vars<- rowVars(cleaned_data)
+selected_vars <- order(pc_vars, decreasing = TRUE)[seq_len(min(ntop,
+                                                            length(pc_vars)))]
+PCA <- prcomp(t(cleaned_data[selected_vars, ]), scale. = TRUE)
+perc_var <- round(100*PCA$sdev^2/sum(PCA$sdev^2),1)
+
+
+dataGG = data.frame(PC1 = PCA$x[,1], PC2 = PCA$x[,2],
+                    PC3 = PCA$x[,3], PC4 = PCA$x[,4],
+                    sex = colData(dds)$sex,
+                    condition = colData(dds)$condition)
+
+(qplot(PC1, PC2, data = dataGG, color =  condition, shape = sex,
+       main = "PC1 vs PC2, top variable genes, after removal of sex effect", size = I(6))
++ labs(x = paste0("PC1, VarExp:", round(percentVar[1],4)),
+       y = paste0("PC2, VarExp:", round(percentVar[2],4)))
++ scale_colour_brewer(palette = "Set1")
+)
+
+@
+
+As we can see, the sex effect has been removed. The function \Rfunction{ComBat}
+from the \Biocpkg{sva} implements a more sophistaced method for the removal
+of known batches that adjusts the variances in a addition to removal of batch
+specific means.
+
 
 \subsection{Tackling "unknown" batches and other unwanted variation}
 
-\subsection{Dangers and caveats of batch effect removal}
+
+
+\subsection{Best practices and caveats in batch effect removal}
+
+\begin{itemize}
+    \item Not recommended in linear models, always include latent variables
+\end{itemize}
+
 
 \section{Answers to Exercises}
 
