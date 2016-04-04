@@ -1,6 +1,6 @@
 
 % To compile this document
-% graphics.off();rm(list=ls());library('knitr');knit('statisticalMethods-lab.Rnw');  for(i in 1:2) system('R CMD pdflatex statisticalMethods-lab.tex'); purl('statisticalMethods-lab.Rnw')
+% graphics.off();rm(list=ls());library('knitr');knit('statisticalMethods-lab.Rnw'); purl('statisticalMethods-lab.Rnw'); for(i in 1:2) system('R CMD pdflatex statisticalMethods-lab.tex');
 
 
 
@@ -16,7 +16,7 @@ BiocStyle::latex()
 <<options, include=FALSE>>=
 options(digits=3, width=80)
 opts_chunk$set(echo=TRUE,tidy=FALSE,include=TRUE,
-               dev='png', fig.width = 6, fig.height = 3.5, comment = '  ', dpi = 300,
+               dev='pdf', fig.width = 6, fig.height = 3.5, comment = '  ', dpi = 300,
 		cache = T, lazy.load = FALSE, background="grey93" )
 @
 
@@ -30,7 +30,7 @@ opts_chunk$set(echo=TRUE,tidy=FALSE,include=TRUE,
 \usepackage{mathpazo}
 \usepackage{soul}
 \usepackage{cases}
-\setlength{\parindent}{0cm} 
+\setlength{\parindent}{0cm}
 \usepackage{xhfill}
 \usepackage[labelformat=empty]{caption}
 \providecommand{\abs}[1]{\left\lvert#1\right\rvert}
@@ -71,10 +71,11 @@ library(matrixStats)
 library(MASS)
 library(vegan)
 library(locfit)
+library(stringr)
 
 ggplotRegression <- function (fit) {
 
-ggplot(fit$model, aes_string(x = names(fit$model)[2], y = names(fit$model)[1])) + 
+ggplot(fit$model, aes_string(x = names(fit$model)[2], y = names(fit$model)[1])) +
   geom_point() +
   stat_smooth(method = "lm", col = "coral2") +
   labs(title = paste("Adj R2 = ",signif(summary(fit)$adj.r.squared, 5),
@@ -88,21 +89,21 @@ ggplot(fit$model, aes_string(x = names(fit$model)[2], y = names(fit$model)[1])) 
 
 \section{Contents of the lab}
 
-In this lab important statistical methods for bioinformatics will be discussed, 
+In this lab important statistical methods for bioinformatics will be discussed,
 namely clustering, regression analysis and PCA.
 We will apply these techniques in the context of the analysis of RNA--Seq data.
 
 \section{Dimensionality reduction and clustering of high--dimensional data sets}
 
 \subsection{Simulated RNA-Seq data}
-In order to introduce dimensionality reduction methods, we 
-will use simulated RNA--Seq data. We simulate two groups with 4 samples in each group. 
-On top of this, each group contains 2 batches: males and females. 
-Batch effects are an important problem in biology and dimension--reduction 
+In order to introduce dimensionality reduction methods, we
+will use simulated RNA--Seq data. We simulate two groups with 4 samples in each group.
+On top of this, each group contains 2 batches: males and females.
+Batch effects are an important problem in biology and dimension--reduction
 and clustering methods are common tools
 to identify batches. We use the function \Rfunction{makeExampleDESeqDataSet} from
-the package \Biocpkg{DESeq2} to produce the simulated data and then 
-add the sex batches. 
+the package \Biocpkg{DESeq2} to produce the simulated data and then
+add the sex batches.
 
 << simulateRNASeq >>=
 dds <- makeExampleDESeqDataSet(m=8, betaSD = 2)
@@ -110,21 +111,21 @@ dds <- makeExampleDESeqDataSet(m=8, betaSD = 2)
 ## add sex as a batch effect, there are two males and two females in each group
 colData(dds)$sex <- factor(rep(c("m", "f"), 4))
 
-## modify counts to add a batch effect, we add normally distributed random noise 
+## modify counts to add a batch effect, we add normally distributed random noise
 ## with mean 2 to randomly selected genes of male samples and then round the result
 cts <- counts(dds)
 ranGenes <- floor(runif(300)*1000)
 
-for(i in ranGenes){ 
-  cts[i, colData(dds)$sex == "m"] <- as.integer(cts[i, colData(dds)$sex == "m"] 
+for(i in ranGenes){
+  cts[i, colData(dds)$sex == "m"] <- as.integer(cts[i, colData(dds)$sex == "m"]
                                                 + round(rnorm(1,4, sd = 1)))
   }
-counts(dds) <- cts  
+counts(dds) <- cts
 
 counts(dds)[5:10,]
 @
 
-As usual for Bioconductor packages, the simulated counts are saved 
+As usual for Bioconductor packages, the simulated counts are saved
 in a matrix, where the columns correspond to the
 samples and the rows to the genes.
 
@@ -132,26 +133,30 @@ samples and the rows to the genes.
 
 Count data are heteroscesdastic, that is, their variance depends on the mean.
 For the data set at hand, this means that the higher the gene expression of the
-gene, the higher is its variance. We can see this relationship by producing 
+gene, the higher is its variance. We can see this relationship by producing
 a plot of the ranked mean bins against the estimated standard deviation in
 each bin. Means and standard deviations are estimated per gene in this case.
-We use the function   \Rfunction{meanSdPlot} from the \Biocpkg{VSN} package 
+We use the function   \Rfunction{meanSdPlot} from the \Biocpkg{VSN} package
 to achieve this.
 
-<<meanSd_Sim_Data, dependson="simulateRNASeq", echo = TRUE>>=
-meanSdPlot(counts(dds), ylim = c(0,100))
+<<meanSd_Sim_Data, dependson="simulateRNASeq", echo = TRUE, fig.show='hide'>>=
+pl <- meanSdPlot(counts(dds))
+@
+<<meanSd_Sim_Data_pl>>=
+pl$gg + ylim(0,100)
 @
 
+
 Homoscedastic data would produce a straight red line in this plot. \Biocpkg{DESeq2}
-offers the regularized--logarithm transformation, or rlog for short in order 
+offers the regularized--logarithm transformation, or rlog for short in order
 to alleviate this problem.
 
-For genes with high counts, the rlog transformation differs not much from 
+For genes with high counts, the rlog transformation differs not much from
 an ordinary log2 transformation.
 
-For genes with lower counts, however, the values are shrunken towards the 
-genes' averages across all samples. Using an empirical 
-Bayesian prior in the form of a ridge penalty, this is done such 
+For genes with lower counts, however, the values are shrunken towards the
+genes' averages across all samples. Using an empirical
+Bayesian prior in the form of a ridge penalty, this is done such
 that the rlog--transformed data are approximately homoscedastic.
 
 We perform an rlog transformation of the simulated data and then produce
@@ -168,16 +173,16 @@ proceed to the dimension reduction and the associated plots.
 
 \subsection{PCA for the simulated RNA--Seq data}
 
-A PCA represents the individual samples in our RNA--Seq data 
-data set by two or more ``artificial" variables,  
-which are called Principal Components (PCs). The components 
+A PCA represents the individual samples in our RNA--Seq data
+data set by two or more ``artificial" variables,
+which are called Principal Components (PCs). The components
 are linear combinations of the genes and the linear
-combination is chosen in such a way that the euclidean distance between the 
-individuals using centered and standardized variables is minimized. 
+combination is chosen in such a way that the euclidean distance between the
+individuals using centered and standardized variables is minimized.
 
 If $X = (x_1, \dotsc, x_p)$ denotes the original data matrix
 (i.e. our rlog--transformed data), then the columns of
-the transformed data matrix, also called the  ``principal components" 
+the transformed data matrix, also called the  ``principal components"
 or "(PC) scores''  is simply given by:
 
 $$
@@ -185,13 +190,13 @@ $$
 $$
 
 Where $a_i$ is a vector of length $p$. The $a_i$ vectors are commonly
-called ``loadings" or ``principal axes". These loadings are usually 
-the eigenvectors of the correlation matrix of the data. 
+called ``loadings" or ``principal axes". These loadings are usually
+the eigenvectors of the correlation matrix of the data.
 
-It can be shown that choosing the loadings in this way leads to a 
+It can be shown that choosing the loadings in this way leads to a
 transformation that generates principal components that have maximal
 variance and preserve as good as possible the distances between the original
-observations. 
+observations.
 
 If we have many variables (genes) as in our case ($p = 1000$), it is advisable
 to perform a selection of variables since this leads to more stable PCA results.
@@ -203,19 +208,19 @@ Here, we simply use the 500 most variable genes.
 ntop = 500
 
 pvars <- rowVars(rldSim)
-select <- order(pvars, decreasing = TRUE)[seq_len(min(ntop, 
+select <- order(pvars, decreasing = TRUE)[seq_len(min(ntop,
                                                       length(pvars)))]
 
 PCA <- prcomp(t(rldSim)[, select], scale = F)
 percentVar <- round(100*PCA$sdev^2/sum(PCA$sdev^2),1)
 
 
-dataGG = data.frame(PC1 = PCA$x[,1], PC2 = PCA$x[,2], 
-                    PC3 = PCA$x[,3], PC4 = PCA$x[,4], 
+dataGG = data.frame(PC1 = PCA$x[,1], PC2 = PCA$x[,2],
+                    PC3 = PCA$x[,3], PC4 = PCA$x[,4],
                     sex = colData(dds)$sex,
                     condition = colData(dds)$condition)
 
-(qplot(PC1, PC2, data = dataGG, color =  condition, shape = sex, 
+(qplot(PC1, PC2, data = dataGG, color =  condition, shape = sex,
        main = "PC1 vs PC2, top variable genes", size = I(6))
 + labs(x = paste0("PC1, VarExp:", round(percentVar[1],4)),
        y = paste0("PC2, VarExp:", round(percentVar[2],4)))
@@ -229,8 +234,8 @@ We can see that the first PC separates the two experimental conditions,
 while the second one splits the samples by sex. This shows that the PCA can
 be used to visualize and detect batch effects. Note that the principal
 components are commonly ordered according to ``informativeness'', i.e.
-the percentage of the total variance in the data set they explain. So 
-a separation according to the first PC is stronger than a separation 
+the percentage of the total variance in the data set they explain. So
+a separation according to the first PC is stronger than a separation
 according to the second one. In the simulated data, the experimental
 group is more important the sample batch (= sex).
 
@@ -244,35 +249,36 @@ computed using the function \Rfunction{dist}.
 
 This heatmap is then ordered via hierarchical clustering. Hierarchical clustering
 starts with as many  clusters as there are samples and successively merges samples
-that are close to each other. This merging process is commonly visualized as 
-a tree like graphic called a dendogramm. 
+that are close to each other. This merging process is commonly visualized as
+a tree like graphic called a dendogramm.
 
 <<SimData_heatmap_and_clustering, fig.height = 5, dependson="meanSdrlog">>=
 dists <- as.matrix(dist(t(rldSim)))
 
-rownames(dists) <-  colData(dds)$sex 
-colnames(dists) <-  colData(dds)$condition
+rownames(dists) <-  paste0(colData(dds)$sex,
+                                  "_", str_sub(rownames(colData(dds)), 7))
+colnames(dists) <- paste0(colData(dds)$condition,
+                                  "_", str_sub(rownames(colData(dds)), 7))
 
 hmcol <- colorRampPalette(brewer.pal(9, "GnBu"))(100)
 heatmap.2(dists, trace="none", col = rev(hmcol))
-
 @
 Again we see that samples cluster mainly by experimental condition, but also
 by batch.
 
 \section{Multidimensional scaling (MDS)}
 
-Multidimensional scaling is a technique alternative to PCA.  
-MDS takes a set of dissimilarities 
-and returns a set of points such that the distances between 
+Multidimensional scaling is a technique alternative to PCA.
+MDS takes a set of dissimilarities
+and returns a set of points such that the distances between
 the points are approximately equal to the dissimilarities.
 
-We can think of ``squeezing'' a high-dimensional point cloud into 
-a small number of dimensions (2, perhaps 3) while 
+We can think of ``squeezing'' a high-dimensional point cloud into
+a small number of dimensions (2, perhaps 3) while
 preserving as well as possible the inter--point distances.
 
-Thus, it can be seen as a generalization of PCA in some sense, 
-since it allows to represent any distance, not only 
+Thus, it can be seen as a generalization of PCA in some sense,
+since it allows to represent any distance, not only
 the euclidean one.
 
 
@@ -280,26 +286,26 @@ the euclidean one.
 \subsection{Classical MDS for single cell RNA--Seq data}
 
 Here we get the cell--cycle corrected single cell RNA--seq data from
-\href{http://dx.doi.org/10.1038/nbt.3102}{Buettner et. al.}. The authors 
-use a dataset studying the differentiation of T-cells. The authors found 
+\href{http://dx.doi.org/10.1038/nbt.3102}{Buettner et. al.}. The authors
+use a dataset studying the differentiation of T-cells. The authors found
 that the cell cycle had a profound impact on the gene expression for this
 data set and developed a factor analysis--type method (a regression--type model
 where the coefficients are random  and follow a distribution)
-to remove the cell cycle effects. The data are given as log--transformed 
+to remove the cell cycle effects. The data are given as log--transformed
 counts.
 
-We first import the data as found in the supplement of the article 
+We first import the data as found in the supplement of the article
 and the compute the euclidean distances between the single cells.
 
-Then, a classic MDS (with 2 dimensions in our case) 
+Then, a classic MDS (with 2 dimensions in our case)
 can be produced from this distance matrix. We compute the distance
-matrix on the centered and scaled gene expression measurements per 
+matrix on the centered and scaled gene expression measurements per
 cell as to make them comparable across cells.
 
 This gives us a set of  points that we can then plot.
 
 <<r scalingSingleCell >>=
-scData <- t(read.csv("http://www-huber.embl.de/users/klaus/nbt.3102-S7.csv", 
+scData <- t(read.csv("nbt.3102-S7.csv",
             row.names  = 1))
 
 
@@ -313,31 +319,31 @@ head(scalingEuSC)
 @
 
 
-In the non--linear PCA method used in the original paper 
-a clear two groups separation appears with regard to gata3, 
-a factor that is important in T\textunderscore H2 differentiation. We color the 
+In the non--linear PCA method used in the original paper
+a clear two groups separation appears with regard to gata3,
+a factor that is important in T\textunderscore H2 differentiation. We color the
 cells in the MDS plot according to gata3 expression and  observe
-that the first MDS dimension separates two cell populations with 
-high and low gata3 expression. This is consistent with the results 
+that the first MDS dimension separates two cell populations with
+high and low gata3 expression. This is consistent with the results
 reported in the original publication, although a different method
-, namely classic MDS, to produce a low--dimensional representation 
+, namely classic MDS, to produce a low--dimensional representation
 of the data was used.
 
 << plotScalingSingleCell, dependson="scalingSingleCell" >>=
 
 rownames(scData)[727]
 
-gata3 <- cut(scale(scData[727,]), 5, 
+gata3 <- cut(scale(scData[727,]), 5,
              labels = c("very low", "low", "medium", "high", 'very high'))
 
 # reverse label ordering
 gata3 <- factor(gata3, rev(levels(gata3)))
 
-scPlot <- qplot(MDS_Dimension_1, MDS_Dimension_2, data = scalingEuSC, 
+scPlot <- qplot(MDS_Dimension_1, MDS_Dimension_2, data = scalingEuSC,
       main = "Metric MDS",
       color = gata3, size = I(3))  + scale_color_brewer(palette = "RdBu")
-    
-  
+
+
 scPlot
 # + scale_color_gradient2(mid = "#ffffb3")
 # + scale_colour_manual(values = rev(brewer.pal(5, "RdBu"))))
@@ -349,11 +355,11 @@ gata3Colours <- invisible(print(scPlot))$data[[1]]$colour
 
 \subsection{Assessing the quality of the scaling and non--metric MDS}
 
-A measure of how good the scaling is given by a comparison of the original 
+A measure of how good the scaling is given by a comparison of the original
 distances to the approximated distances. This comparison is commonly done using a
-``stress--function" that summarizes the difference between the low dimensional distances and 
-the original ones. Stress functions can also be used to compute a MDS. This is for example done in 
-so called non--metric MDS, where for example the stress function is defined in such a way that 
+``stress--function" that summarizes the difference between the low dimensional distances and
+the original ones. Stress functions can also be used to compute a MDS. This is for example done in
+so called non--metric MDS, where for example the stress function is defined in such a way that
 small distances (Sammon scaling) or a general monotonic function of the observed distances
 is used as a target (Kruskal's non--metric scaling).
 
@@ -361,7 +367,7 @@ Here we check the classical stress functions, which sums up the squared differen
 and scales them to the squared sum of the original ones.
 
 Additionally, we produce a ``Shepard'' plot, which plots the original distances against
-the ones inferred from using the scaling solution. This allows to assess how accurately 
+the ones inferred from using the scaling solution. This allows to assess how accurately
 the scaling represents the actual distances.
 
 <<  checkScaling, dependson="scalingSingleCell" >>=
@@ -372,7 +378,7 @@ sum((distEucSC - distMDS)^2)/sum(distEucSC^2)
 
 
 ord <- order(as.vector(distEucSC))
-dataGG <- data.frame(dOrg = as.vector(distEucSC)[ord],  
+dataGG <- data.frame(dOrg = as.vector(distEucSC)[ord],
                      dMDS = as.vector(distMDS)[ord])
 
 (qplot(dOrg, dMDS, data=dataGG,
@@ -380,11 +386,11 @@ dataGG <- data.frame(dOrg = as.vector(distEucSC)[ord],
 @
 
 
-We see that the the scaling is not extremely good. 
+We see that the the scaling is not extremely good.
 
 \subsection{Kruskal's Scaling}
 
-Kruskal's scaling method is implemented in the function \Rfunction{isoMDS} 
+Kruskal's scaling method is implemented in the function \Rfunction{isoMDS}
 from the \CRANpkg{MASS} package. We used the metric MDS solution as
 a starting solution.
 
@@ -398,7 +404,7 @@ kruskalMDS$stress
 
 
 ord <- order(as.vector(distEucSC))
-dataGGK <- data.frame(dOrg = as.vector(distEucSC)[ord],  
+dataGGK <- data.frame(dOrg = as.vector(distEucSC)[ord],
                      dMDS = as.vector(dist(scores(kruskalMDS)))[ord])
 
 (qplot(dOrg, dMDS, data=dataGGK,
@@ -406,7 +412,7 @@ dataGGK <- data.frame(dOrg = as.vector(distEucSC)[ord],
 
 @
 
-Now the Shepard plot looks much better, the scaling should reflect the original 
+Now the Shepard plot looks much better, the scaling should reflect the original
 distances in a better way. Let's repeat the plot of the single cells
 
 
@@ -418,30 +424,30 @@ names(scalingK) <- c("MDS_Dimension_1", "MDS_Dimension_2")
 qplot(MDS_Dimension_1, MDS_Dimension_2, data = scalingK,
       main = "Non--metric MDS",
       color = gata3, size = I(3)) + scale_color_brewer(palette = "PuOr")
-      
+
 @
 
 
 Although the representation is better than the first, metric, MDS the overall
-visual impression is similar. 
+visual impression is similar.
 
-Single cell data is commonly used to infer (developmental) hierarchies of single cells. 
-For a nice bioconductor package wrapping a lot of dimension reduction 
-techniques for single cell data, see \Biocpkg{sincell} and the 
+Single cell data is commonly used to infer (developmental) hierarchies of single cells.
+For a nice bioconductor package wrapping a lot of dimension reduction
+techniques for single cell data, see \Biocpkg{sincell} and the
 \href{http://dx.doi.org/10.1093/bioinformatics/btv368}{associated article},
 especially, supplementary table 1.
 
 
 \section{Regression models}
 
-In regression we use one variable to explain or predict the other. It is customary 
-to plot the predictor variable on the x--axis and the predicted variable on the 
+In regression we use one variable to explain or predict the other. It is customary
+to plot the predictor variable on the x--axis and the predicted variable on the
 y--axis.
 The predictor is also called the independent variable, the explanatory variable, the
 covariate, or simply x. The predicted variable is called the dependent variable, or simply
-y. 
+y.
 
-In a regression problem the data are pairs $(x_i , y_i )$ for $i = 1, \dotsc , n$. 
+In a regression problem the data are pairs $(x_i , y_i )$ for $i = 1, \dotsc , n$.
 For each $i, y_i$ is a random variable whose distribution depends on $x_i$. We write
 
 \begin{gather*}
@@ -452,8 +458,8 @@ The above  expresses $y_i$ as a systematic or explainable part $g(x_i)$ and an u
 $\varepsilon_i$. Or more informally: response = signal + noise.
  $g$ is called the regression function. Often the  goal is to estimate $g$. As
 usual, the most important tool to infer a suitable function is a simple scatterplot. Once we have an estimate
-of $\hat g$ of $g$, we can compute $r_i := y_i - \hat g(x_i )$. The $r_i$ 's are called residuals. 
-The $\varepsilon_i$'s themselves are called errors. 
+of $\hat g$ of $g$, we can compute $r_i := y_i - \hat g(x_i )$. The $r_i$ 's are called residuals.
+The $\varepsilon_i$'s themselves are called errors.
 
 
 Residuals are used to evaluate and assess the fit of models for g. Usually one makes distributional
@@ -466,7 +472,7 @@ r_i \sim N(0, \sigma^2)
 
 
 If we choose the regression function $g$ correctly and the model fits the data well,
-the residuals should thus scatter around a straight line. Always remember that predicting or explaining $y$ 
+the residuals should thus scatter around a straight line. Always remember that predicting or explaining $y$
 from $x$ is not perfect; knowing $x$ does not tell
 us $y$ exactly. But knowing $x$ does tell us something about $y$ and allows us to make more
 accurate predictions than if we didn't know $x$. You can think of a regression model as a distribution
@@ -479,18 +485,18 @@ For example, consider a sample of cities and let $x$ be the number of churches a
 number of bars. A scatterplot of $x$ and y will show a strong relationship between them. But
 the relationship is caused by the population of the cities. Large cities have large numbers
 of bars and churches and appear near the upper right of the scatterplot. Small cities have
-small numbers of bars and churches and appear near the lower left. 
+small numbers of bars and churches and appear near the lower left.
 
 
-A common choice for the regression function $g$ is a linear function, if we have only 
-single predictor $X$, the simple linear regression model is: 
+A common choice for the regression function $g$ is a linear function, if we have only
+single predictor $X$, the simple linear regression model is:
 
 \begin{gather*}
 y_i = \beta_0 +  \beta_1 x_{i} + \varepsilon_i; \quad
  \varepsilon_i \sim N(0, \sigma);
 \end{gather*}
 
-We can of course always add more predictors, let their total number be denoted by 
+We can of course always add more predictors, let their total number be denoted by
 $p$. Then we get a multiple linear regression:
 
 \begin{gather*}
@@ -501,8 +507,8 @@ y_i= \beta_0 + \sum_{j=1}^p \beta_j x_{ij} + \varepsilon_i; \quad  j=1,...,p
 \subsection{Example: Bodyfat data set}
 We will illustrate this using
 a data set on variables influencing your body fat:
-A variety of popular health books suggest  that the readers assess their health, 
-at least in part, by estimating their percentage of body fat.  
+A variety of popular health books suggest  that the readers assess their health,
+at least in part, by estimating their percentage of body fat.
 
 The data set ``bodyfat'', which  contains variables that can be used to build models predictive of body fat:
 
@@ -526,7 +532,7 @@ The data set ``bodyfat'', which  contains variables that can be used to build mo
 
 First, we load in the data set, inspect it a bit and attach it
 <<loadBodyfat,   echo = TRUE>>=
-load(url("http://www-huber.embl.de/users/klaus/BasicR/bodyfat.rda"))
+load("bodyfat.rda")
 dim   (bodyfat)    # how many rows and columns in the dataset?
 names (bodyfat)    # names of the columns)
 @
@@ -534,7 +540,7 @@ names (bodyfat)    # names of the columns)
 
 To get a first impression of the data, we can compute some summary
 statistics for e.g. age. We can get all these statistics for all the
-data at once by using an appropriate apply command. 
+data at once by using an appropriate apply command.
 
 <<age-summary,   echo = TRUE>>=
 ## compute descriptive statistics for "age"
@@ -550,47 +556,47 @@ sapply(bodyfat,  FUN = mean)
 \subsection{Identifying useful predictors }
 
 We have a lot of predictors available to come up with regression
-model for bodyfat. In order to get an overview of the data, we 
+model for bodyfat. In order to get an overview of the data, we
 can first produce a PCA plot and a pairwise heatscatter. Observation 39
 is removed from the data, since it is clearly an outlier.
 
 \subsubsection{PCA and biplots}
 
 A PCA represents the individuals in our data set by two ``artificial''
-variables, which are called Principal Components (PCs). The components 
+variables, which are called Principal Components (PCs). The components
 are linear combinations of the orirginal 15 variables and the linear
-combination is chosen in such a way that the euclidean distance between the 
-individuals using centered and standardized variables is minimized. 
+combination is chosen in such a way that the euclidean distance between the
+individuals using centered and standardized variables is minimized.
 
-A Biplot is a PCA plot that shows scaled observations combined with a plot of  
+A Biplot is a PCA plot that shows scaled observations combined with a plot of
 ``variable--arrows".
-these arrows are a way to represent the original variables in the space of the 
-individuals and are scaled versions of the the loadings. 
+these arrows are a way to represent the original variables in the space of the
+individuals and are scaled versions of the the loadings.
 
 This scaling is controlled by a tuning
-parameter `lambda`. The default setting in R leads to observation points 
-that represent approximations of the Mahalanobis distance, which 
-is a distance that takes the covariance between variables into 
+parameter `lambda`. The default setting in R leads to observation points
+that represent approximations of the Mahalanobis distance, which
+is a distance that takes the covariance between variables into
 account. The angles between the arrows approximate their correlations.
 
-The loadings  also correspond to  correlation of the variables with the PCs; 
-up to a 
-multiplication by the square--root of the eigenvalue of the corresponding 
+The loadings  also correspond to  correlation of the variables with the PCs;
+up to a
+multiplication by the square--root of the eigenvalue of the corresponding
 loading vector.
 
-Thus, the $x$--coordinate of the variable arrows  is  proportional 
-the correlation with the first PC and  the $y$--coordinate is 
+Thus, the $x$--coordinate of the variable arrows  is  proportional
+the correlation with the first PC and  the $y$--coordinate is
 proportional the correlation with the second PC.
 
-Thus, arrows that point roughly into the same direction indicate 
-correlated variables. 
+Thus, arrows that point roughly into the same direction indicate
+correlated variables.
 
 
-However, since the axis and arrows are rescaled a bit (e.g. by sample 
-size and the tuning parameter) 
-a Biplot can obscure things. Plotting the original PCs we can 
+However, since the axis and arrows are rescaled a bit (e.g. by sample
+size and the tuning parameter)
+a Biplot can obscure things. Plotting the original PCs we can
 clearly see that there is essentially one PC that captures all the variation
-in the data, since the sample points only scatter at random in their PC\textunderscore 2 
+in the data, since the sample points only scatter at random in their PC\textunderscore 2
 coordinates. This is hard to see on the Biplot.
 
 <<InspectionPlots,   echo = TRUE, eval = TRUE, fig.width = 15, fig.height = 12 >>=
@@ -612,16 +618,16 @@ heatpairs(as.matrix(bodyfat[,3:5]))
 @
 
 \subsubsection{The french way of Biplots }
-The french school of multivariate analysis prefers a different (and in 
+The french school of multivariate analysis prefers a different (and in
 my opinion nicer) way of visualizing a PCA. Instead of producing a biplot,
-the correlations between the PCs and the original variables are visualized 
-directly in a ``correlation circle''. 
+the correlations between the PCs and the original variables are visualized
+directly in a ``correlation circle''.
 
-This is implemented in the package \Rpackage{ade4} which 
-stands for ``Analyse de Donnees destine d'abord a la manipulation des donnes 
+This is implemented in the package \Rpackage{ade4} which
+stands for ``Analyse de Donnees destine d'abord a la manipulation des donnes
 Ecologiques et Environnementales avec des procedures Exploratoires d'essence Euclidienne''
 
-This packages contains a lot of nice multivariate analysis methods, 
+This packages contains a lot of nice multivariate analysis methods,
 not limited to PCA.
 
 <<frenchPCA,   echo = TRUE, eval = TRUE, fig.width = 8 >>=
@@ -638,13 +644,13 @@ s.corcircle(frenchPCA$co)
 \subsubsection{Selecting a predictor }
 
 We see that a lot of potential predictor are heavily correlated with one another,
-in fact all except for age, height and density can be used interchangeably. 
+in fact all except for age, height and density can be used interchangeably.
 
-Because of this, we can fit a first regression by using the predictor that has the 
+Because of this, we can fit a first regression by using the predictor that has the
 highest individual correlation with bodyfat.
 
 
-<<select_variable,   echo = TRUE>>=
+<<select_variable, echo = TRUE>>=
 ### look at correlations of bodyfat with other variables
 select.vars <- abs(cor(bodyfat))["percent.fat" ,]
 select.vars
@@ -663,17 +669,17 @@ lm.fat <- lm(bodyfat$percent.fat ~ bodyfat$abdomen.circum )
 ggplotRegression(lm.fat)
 @
 
-The model  looks reasonable, we can now 
-visually check whether the residuals follow a 
+The model  looks reasonable, we can now
+visually check whether the residuals follow a
 Gaussian law with mean zero:
 
 
-<<select variable,   echo = TRUE>>=
+<<plot_selected_model,   echo = TRUE>>=
 qplot(.fitted, .resid, data = fortify(lm.fat)) +
   geom_hline(yintercept = 0) + geom_smooth(se = FALSE)
 @
 
-There seems to be no systematic trend in the residuals, so the model 
+There seems to be no systematic trend in the residuals, so the model
 fit seem to be fine! Thus abdominal circumference is highly predictive
 of bodyfat in man. A result which is possibly not really surprising.
 The data also indicates that almost all body measures can be used to
@@ -681,14 +687,14 @@ predict bodyfat.
 
 \section{Local Regression (LOESS) }
 
-Local regression is a commonly used approach for fitting flexible non--linear 
+Local regression is a commonly used approach for fitting flexible non--linear
 functions, which involves computing many local linear regression fits and combining
-them. Local regression is a very useful technique both for  data visualization and 
+them. Local regression is a very useful technique both for  data visualization and
 trend fitting. Fitting many local models requires quite some computational power,
 but it usually feasible with today's hardware. We illustrate the local regression
 using the \CRANpkg{locfit} package on simulated data.
 
-We first fit a linear regression line to simulated  
+We first fit a linear regression line to simulated
 data that follows a polynomial trend and see that it does not really
 fit well.
 
@@ -709,7 +715,7 @@ dataL$LinReg <- predict(linreg)
 @
 
 We now use the function \Rfunction{locfit} to perform a local regression on the
-data. It takes the predictors wrapped in a call to \Rfunction{lp()}. Within this 
+data. It takes the predictors wrapped in a call to \Rfunction{lp()}. Within this
 function we can also set tunning parameters. An important one is the  \Rfunction{nn}
 one, which set the proportion of nearest--neighbors to be used for the local fits.
 
@@ -717,12 +723,12 @@ The lower this percentage, the more closely the line will follow the data points
 
 << loessExampleFit, dependson="loessExampleLinFit">>=
 
-dataL$locFit  <- predict(locfit(y~lp(a, nn=0.5, deg=1), data=dataL), 
+dataL$locFit  <- predict(locfit(y~lp(a, nn=0.5, deg=1), data=dataL),
                          newdata = dataL$a)
 
 
  (qplot(a, y, data = dataL, main = "Linear vs. local regression")
- +  geom_line(aes(x = a, y = locFit), color = "dodgerblue3") 
+ +  geom_line(aes(x = a, y = locFit), color = "dodgerblue3")
  +  geom_line(aes(x = a, y = LinReg), color = "coral3"))
 
 @
@@ -733,37 +739,37 @@ dataL$locFit  <- predict(locfit(y~lp(a, nn=0.5, deg=1), data=dataL),
 We now illustrate some of the concepts introduced above by looking
 at the analysis of next generation sequencing data.
 
-Next generation sequencing data such as RNA--Seq are often analyzed in the 
+Next generation sequencing data such as RNA--Seq are often analyzed in the
 form of counts assigned to certain bins, e.g. a bin could be all the exons
 of a gene, or an isoform for RNA--Seq data. This count data then shows
 overdispersion, i.e. the variance is greater than than the mean.
 
-In fact, it is known that a standard Poisson model can only account for the technical 
+In fact, it is known that a standard Poisson model can only account for the technical
 noise in RNA--Seq data. In the Poisson model the variance is equal to the
 mean, while in  RNA--Seq data the variance is greater than the mean.
 
-A popular way to model this is to use a Negative--Binomial-distribution (NB), 
+A popular way to model this is to use a Negative--Binomial-distribution (NB),
 which includes an
 additional parameter dispersion  parameter $\alpha$ such that  $E(NB) = \mu$ and
 
 \begin{gather*}
-\text{Var[NB($\mu$, $\alpha$)]} = \mu + \alpha \cdot \mu^2 
+\text{Var[NB($\mu$, $\alpha$)]} = \mu + \alpha \cdot \mu^2
 \end{gather*}
 
 Hence, the variance is greater than the mean. \Biocpkg{DESeq2}  uses the NB
-model and fits dispersion values (see below). 
+model and fits dispersion values (see below).
 
-We use  a dataset produced by Bottomly et al., sequencing two strains of mouse 
+We use  a dataset produced by Bottomly et al., sequencing two strains of mouse
 with many biological replicates. This dataset and a number of other sequencing datasets
-have been compiled from raw data into read counts tables by Frazee, Langmead, 
-and Leek as part of the ReCount project. These datasets are made publicly 
+have been compiled from raw data into read counts tables by Frazee, Langmead,
+and Leek as part of the ReCount project. These datasets are made publicly
 available at the following website:
 
 \url{http://bowtie-bio.sourceforge.net/recount/}
 
 Unlike many sequencing studies, Bottomly et al., realizing the such information
 is important for downstream analysis, provided the experiment number for all samples.
-In fact : the strain of mouse. 
+In fact : the strain of mouse.
 We remove genes with less than 5 counts in any sample from
 the analyis since we cannot draw much information from genes
 with a very low number of counts anyway.
@@ -771,7 +777,7 @@ with a very low number of counts anyway.
 The data is stored as an ExpressionSet object.
 
 <<getBottomly Data, echo = TRUE>>=
-load(url("http://www-huber.embl.de/users/klaus/BasicR/bottomly_eset.RData"))
+load("bottomly_eset.RData")
 bottomly.eset
 pData(bottomly.eset)
 idx.nn <- apply(exprs(bottomly.eset), 1, function(x) { all(x > 5)})
@@ -782,20 +788,20 @@ bottomly.eset <- subset(bottomly.eset, idx.nn)
 \subsection{Data calibration / normalization}
 In order to make the samples comparable to each other, including normalization
 for sequencing depth, we calculate sizefactors. A sizefactor
-is the median gene expression per sample relative to a reference 
+is the median gene expression per sample relative to a reference
 sample formed by the geometric mean of each single gene across samples.
 
 
 Thus it, gives a scaling factor which makes the gene expression measurements
-(counts) comparable across samples. Dividing the 
+(counts) comparable across samples. Dividing the
 counts by the sizefactors will normalize them.
-Note that the size factor  normalization will only work if most of the 
+Note that the size factor  normalization will only work if most of the
 genes are not differentially expressed between the samples. We use the function
 \Rfunction{estimateSizeFactorsForMatrix} from the \Rpackage{DESeq2} in order
 to calculate the size factors for each sample.
 
 
-<<normalize Bottomly Data, echo = TRUE>>=
+<<normalize_Bottomly_Data, echo = TRUE>>=
 bottomly.sf <- estimateSizeFactorsForMatrix(exprs(bottomly.eset))
 
 
@@ -806,9 +812,9 @@ bottomly.norm <- bottomly.eset
  }
 
 
-multidensity( exprs(bottomly.eset), xlab="mean counts", xlim=c(0, 500), 
+multidensity( exprs(bottomly.eset), xlab="mean counts", xlim=c(0, 500),
            main = "Bottomly raw")
-multidensity( exprs(bottomly.norm), xlab="mean counts", xlim=c(0, 500), 
+multidensity( exprs(bottomly.norm), xlab="mean counts", xlim=c(0, 500),
            main = "Bottomly normalized")
 
 
@@ -817,16 +823,16 @@ multidensity( exprs(bottomly.norm), xlab="mean counts", xlim=c(0, 500),
 
 We see that the normalization brings the samples to a common
 scale. We can check
-this further by producting pairwise MA plots. 
+this further by producting pairwise MA plots.
 
 \subsection{Pairwise MA plots}
 
-MA plots are used to study dependences between the log ratio of two variables 
-and the mean values of the same two variables. The variables are the genes in our 
-examples.  The log ratios (= log fold--change) of the two 
-measurements are called M values (from ``minus" in the log scale) and 
-are represented in the vertical axis. The mean values of the two measurements 
-are called A values (from ``average" in the log scale) and are represented in the 
+MA plots are used to study dependences between the log ratio of two variables
+and the mean values of the same two variables. The variables are the genes in our
+examples.  The log ratios (= log fold--change) of the two
+measurements are called M values (from ``minus" in the log scale) and
+are represented in the vertical axis. The mean values of the two measurements
+are called A values (from ``average" in the log scale) and are represented in the
 horizontal axis. Commonly a log2 scale is used, since this allows a straighfoward
 interpretation of the M values since a M value of 1 corresponds to a two--fold
 change, a M value of 2 two a for fold change and so on.
@@ -844,9 +850,9 @@ bottomly.log2.raw <- log2(exprs(bottomly.eset))
 pdf("pairwiseMAsBottomly.pdf")
  MA.idx = t(combn(1:21, 2))
 
-	for( i in  1:dim(MA.idx)[1]){ 
-	 MDPlot(bottomly.log2, 
-		c(MA.idx[i,1],MA.idx[i,2]), 
+	for( i in  1:dim(MA.idx)[1]){
+	 MDPlot(bottomly.log2,
+		c(MA.idx[i,1],MA.idx[i,2]),
 	main = paste( sampleNames(bottomly.norm)[MA.idx[i,1]], " vs ",
 	 sampleNames(bottomly.norm)[MA.idx[i,2]] ))
 	}
@@ -856,11 +862,11 @@ dev.off()
 
 \subsubsection*{Exercise: Normalization strategies}
 
-\begin{enumerate}[label=(\emph{\alph*})] 
+\begin{enumerate}[label=(\emph{\alph*})]
 \item Create pairwise MA plots for the raw data on the log2 scale. Can
 you spot samples that a very different from each other?
 
-\item An alternative to size factor  normalization is to 
+\item An alternative to size factor  normalization is to
 just devide the counts of every sample by its sums divided by $10^6$.
 This is sometimes called counts per million normalization.
 Compare this to the  size factor normalization by creating appropriate plots.
@@ -875,42 +881,45 @@ Compare this to the  size factor normalization by creating appropriate plots.
 \subsubsection{Mean--sd plots}
 Count data are heteroscesdastic, that is, their variance depends on the mean.
 For the data set at hand, this means that the higher the gene expression of the
-gene, the higher is its variance. We can see this relationship by producing 
+gene, the higher is its variance. We can see this relationship by producing
 a plot of the ranked mean bins against the estimated standard deviation in
 each bin. Means and standard deviations are estimated per gene in this case.
-We use the function   \Rfunction{meanSdPlot} from the \Biocpkg{VSN} package 
+We use the function   \Rfunction{meanSdPlot} from the \Biocpkg{VSN} package
 to achieve this.
 
-<<meanSd Bottomly Data, echo = TRUE>>=
-meanSdPlot(exprs(bottomly.eset), ylim = c(0,100))
+<<meanSd_Bottomly_Data, echo = TRUE, fig.show='hide'>>=
+pl <- meanSdPlot(exprs(bottomly.eset))
+@
+<<meanSd_Bottomly_Data_pl>>=
+pl$gg + ylim(0,100)
 @
 
 Homoscedastic data will produce a straight red line in this plot. The log2--transform
 aleviates the heteroscedasticity but does not completely remove it as we can
 see in the following plot.
 
-<<meanSdlog2 Bottomly Data, echo = TRUE>>=
+<<meanSdlog2_Bottomly_Data, echo = TRUE>>=
 meanSdPlot(bottomly.log2 )
 @
 
 Not that the log transform is an example of a special class of transformations
-called Box--Cox transformations that have been developped in order to 
+called Box--Cox transformations that have been developped in order to
 make data ``more normal", i.e. removing skewness and heteroscedasticity.
 They are given by:
 \begin{align*}
-x^{\text{Box--Cox}} &= 
+x^{\text{Box--Cox}} &=
     \begin{cases}
     \frac{(x+1)^{\lambda} -1}{\lambda}, \lambda \neq 0 \\
     \log(x+1),   \lambda = 0
     \end{cases}
 \end{align*}
 
-The parameter $\lambda$ is  a tuning parameter for gene that can be optimized 
-in such a way that the distribution of the transformed data has the largest 
+The parameter $\lambda$ is  a tuning parameter for gene that can be optimized
+in such a way that the distribution of the transformed data has the largest
 similarity to a normal distribution.
 
-Another effect of the log--transformation is that log--transformed count values 
-are often more highly correlated than 
+Another effect of the log--transformation is that log--transformed count values
+are often more highly correlated than
 raw ones: the log--transform mitigates the influence of outliers and makes
 the data "more normal". We check this for sample 6 and 11 of the bottomly data.
 
@@ -918,18 +927,18 @@ the data "more normal". We check this for sample 6 and 11 of the bottomly data.
 cor(exprs(bottomly.eset)[,6],exprs(bottomly.eset)[,11])
 cor(bottomly.log2[,6], bottomly.log2[,11])
 @
-The BoxCox transformations are available in the function 
+The BoxCox transformations are available in the function
 \Rfunction{bcPower} from the \CRANpkg{car}.
 
 \subsubsection{Heteroscesdasticity removal by adding pseudocounts}
 
-The log2  transform may not work because RNAseq data contains many 0s. 
+The log2  transform may not work because RNAseq data contains many 0s.
 One quick way to get around this is by adding a constant (
 sometimes called "pseudocount")
-before taking the log. A typical one is 0.5 which gives us a log2 value of 
--1 for 0s. 
+before taking the log. A typical one is 0.5 which gives us a log2 value of
+-1 for 0s.
 
-It will push all count  values upwards, thus mitigating the 
+It will push all count  values upwards, thus mitigating the
 variance dependency on the mean. This is due to the fact that for log--transformed
 normalized counts $k$ following a NB distribution
 and a size factor $s$  we have approximately:
@@ -941,15 +950,15 @@ where $\alpha$ is the dispersion estimate. This shows that for genes with
 a large mean, the variance will no longer depend on the mean and essentially
 be equal to alpha since $\frac{1}{sk}$ is very close to zero.
 
-However, adding pseudocounts will  artificially 
-lower the the variance for lowly expressed genes, possibly leading to 
+However, adding pseudocounts will  artificially
+lower the the variance for lowly expressed genes, possibly leading to
 a higher rate of false positive calls in differential expression analysis.
 
-In general, are carefull modelling of the variance mean realtionship is 
+In general, are carefull modelling of the variance mean realtionship is
 preferable to ad--hoc solutions. Interestingly even adding 5 essentially
 removes the mean--variance dependency for the Bottomly data:
 
-<<meanSdlog2 + pseudocount Data, echo = TRUE>>=
+<<meanSdlog2_pseudocount_Data, echo = TRUE>>=
 meanSdPlot(log2(exprs(bottomly.norm) + 5) )
 
 #library(LSD)
@@ -964,8 +973,8 @@ Bottomly data.
 
 \subsection{Modelling the mean--variance relationship }
 
-We will now look at the approach of the \Biocpkg{DESeq} (and similarly 
-\Biocpkg{DESeq2}) package to model the mean--variance relationship. These 
+We will now look at the approach of the \Biocpkg{DESeq} (and similarly
+\Biocpkg{DESeq2}) package to model the mean--variance relationship. These
 packages fit a negative binomial model for each gene by trying to infer a
 dispersion parameter $\alpha$. We use low--level functions of the \Biocpkg{DESeq}
 to illustrate this. First, means and variances for every gene are obtained.
@@ -974,18 +983,18 @@ the mean--variance relationship of the data.
 
 The typical shape of the dispersion fit is an exponentially decaying curve. The asymptotic
 dispersion for highly expressed genes can be seen as a measurement of biological
-variability in the sense of a squared coefficient of variation: a dispersion 
-value of 0.01 means that the gene's expression tends to differ by typically 
-$\sqrt{0.01}$ = 10\% between samples of the same treatment group. 
+variability in the sense of a squared coefficient of variation: a dispersion
+value of 0.01 means that the gene's expression tends to differ by typically
+$\sqrt{0.01}$ = 10\% between samples of the same treatment group.
 
-For weak genes, the Poisson noise is an additional source of noise, which is 
+For weak genes, the Poisson noise is an additional source of noise, which is
 added to the dispersion.
 
-<<means and variances bottomly>>=
+<<means_and_variances_bottomly>>=
 meansAndVars <- DESeq:::getBaseMeansAndPooledVariances(
   counts=exprs(bottomly.norm),sizeFactors=bottomly.sf,
    conditions=pData(bottomly.eset)$strain)
-heatscatter(log(meansAndVars$baseMean), 
+heatscatter(log(meansAndVars$baseMean),
             log(meansAndVars$baseVar), xlab= "mean of normalized counts",
             ylab = "Variance")
 
@@ -993,22 +1002,22 @@ heatscatter(log(meansAndVars$baseMean),
 
 The plot confirms that there is only mild overdispersion present in the data.
 Most of gene dispersions are only slightly above 0.1 for each gene. In practice,
-one would then fit a line through the dispersion estimates, and the  use this 
+one would then fit a line through the dispersion estimates, and the  use this
 regression line to predict the dispersions. This allows to mitigate the influence
-of dispersion variability and enables the sharing of  information across genes. 
-This is a common strategy with low sample sizes, leading to 
-more stable estimates. We can here plot both a parametric (red) 
+of dispersion variability and enables the sharing of  information across genes.
+This is a common strategy with low sample sizes, leading to
+more stable estimates. We can here plot both a parametric (red)
 and a local fit (blue).
 
 
-<<dispersions bottomly>>=
+<<dispersions_bottomly>>=
 dispersions <-  DESeq:::estimateAndFitDispersionsFromBaseMeansAndVariances(
-  means=meansAndVars$baseMean, variances=meansAndVars$baseVar, 
-  sizeFactors=bottomly.sf, fitType="parametric") 
+  means=meansAndVars$baseMean, variances=meansAndVars$baseVar,
+  sizeFactors=bottomly.sf, fitType="parametric")
 
 dispersionsLocal <-  DESeq:::estimateAndFitDispersionsFromBaseMeansAndVariances(
-  means=meansAndVars$baseMean, variances=meansAndVars$baseVar, 
-  sizeFactors=bottomly.sf, fitType="local") 
+  means=meansAndVars$baseMean, variances=meansAndVars$baseVar,
+  sizeFactors=bottomly.sf, fitType="local")
 
     px = meansAndVars$baseMean
     py = dispersions$disps
@@ -1016,12 +1025,12 @@ dispersionsLocal <-  DESeq:::estimateAndFitDispersionsFromBaseMeansAndVariances(
     fitg = dispersions$dispFun(xg)
     fitLocal = dispersionsLocal$dispFun(xg)
     dataGG = data.frame(px, py, xg, fitg)
-   
+
   (qplot(px, py, data = dataGG, ylab = "dispersion",
          xlab= "mean of normalized counts",
-         log = "xy", alpha = I(1/10))  
-     + geom_line(aes(x = xg, y = fitg), color = "coral3") 
-      + geom_line(aes(x = xg, y = fitLocal), color = "dodgerblue3") 
+         log = "xy", alpha = I(1/10))
+     + geom_line(aes(x = xg, y = fitg), color = "coral3")
+      + geom_line(aes(x = xg, y = fitLocal), color = "dodgerblue3")
    )
 
 
@@ -1039,21 +1048,21 @@ here is only done to illustrate the concepts.
 \subsection{PCA plot}
 PCA is also useful for quality control of high--throughput data. In the bottomly
 data set, we have two mouse strains, a PCA plot should reveal a clustering
-of the samples according to the strain they belong to since the principal 
+of the samples according to the strain they belong to since the principal
 components try to preserve the euclidian distance between the samples.
 
-<<bottomly PCA>>=
+<<bottomly_PCA>>=
 
 b.PCA = prcomp(t(bottomly.log2), scale = T)
 dataGG = data.frame(PC1 = b.PCA$x[,1], PC2 = b.PCA$x[,2], strain
-                    = pData(bottomly.eset)$strain, 
+                    = pData(bottomly.eset)$strain,
                     exp = as.factor(pData(bottomly.eset)$experiment.number))
-(qplot(PC1, PC2, data = dataGG, color = exp, shape = strain) + 
+(qplot(PC1, PC2, data = dataGG, color = exp, shape = strain) +
   scale_color_brewer( type = "qual", palette = 6))
 @
 This is indeed the case. Note that a PCA plot can also be used to spot
-batch effects, e.g. sample cluster by sequencing center. 
-From the PCA plot we clearlz see that the experimental batch 
+batch effects, e.g. sample cluster by sequencing center.
+From the PCA plot we clearlz see that the experimental batch
 explains more variation than the  condition of interest: the two mouse strains.
 
 Samples in batch 4 seem to be very different from the rest of the samples.
@@ -1073,10 +1082,10 @@ computed using the function \Rfunction{dist}.
 
 This heatmap is then ordered via hierarchical clustering. Hierarcical clustering
 starts with as many  clusters as there are samples and successively merges samples
-that are close to each other. This merging process is commonly visualised as 
-a tree like grapgic called a dendogramm. 
+that are close to each other. This merging process is commonly visualised as
+a tree like grapgic called a dendogramm.
 
-<<bottomly heatmap and clustering, fig.height= 5>>=
+<<bottomly_heatmap_and_clustering, fig.height= 5>>=
 dists <- as.matrix(dist(t(bottomly.log2)))
 
 hmcol <- colorRampPalette(brewer.pal(9, "GnBu"))(100)
@@ -1089,16 +1098,42 @@ as a blocking factor in a linear regression model. This will result in compariso
 being performed after substracting a batch mean within each experimental batch.
 
 
+\section{Batch effects}
+
+One often overlooked complication with high-throughput studies
+is batch effects, which occur because measurements are affected by laboratory
+conditions, reagent lots, and personnel differences. This becomes
+a major problem when batch effects are confounded with an outcome of interest
+and lead to incorrect conclusions. Here we look at some relevant examples
+of batch effects and discuss: how to detect, interpret, model, and
+adjust for batch effects.
+
+Batch effects are the biggest challenge faced by genomics research,
+especially in the context of precision medicine. The presence
+of batch effects in one form or another have been reported among most,
+if not all, high-throughput technologies for a short review see the paper
+by
+\href{http://www.dx.doi.org/10.1038/nrg2825}{Leek et al.}
+
+\subsection{Removing known batches}
+
+As we have seen above, we have a sex--related batch effect in our RNA--Seq
+data. We
+
+\subsection{Tackling "unknown" batches and other unwanted variation}
+
+\subsection{Dangers and caveats of batch effect removal}
+
 \section{Answers to Exercises}
 
 
 \subsubsection*{Exercise: Normalization strategies}
 
-\begin{enumerate}[label=(\emph{\alph*})] 
+\begin{enumerate}[label=(\emph{\alph*})]
 \item Create pairwise MA plots for the raw data on the log2 scale. Can
 you spot samples that a very different from each other?
 
-\item An alternative to size factor  normalization is to 
+\item An alternative to size factor  normalization is to
 just devide the counts of every sample by its sums divided by $10^6$.
 This is sometimes called counts per million normalization.
 Compare this to the  size factor normalization by creating appropriate plots.
@@ -1115,9 +1150,9 @@ Compare this to the  size factor normalization by creating appropriate plots.
 pdf("pairwiseMAsBottomlyRaw.pdf")
  MA.idx = t(combn(1:21, 2))
 
-  for( i in  1:dim(MA.idx)[1]){ 
-	 MDPlot(log2(exprs(bottomly.eset)), 
-		c(MA.idx[i,1],MA.idx[i,2]), 
+  for( i in  1:dim(MA.idx)[1]){
+	 MDPlot(log2(exprs(bottomly.eset)),
+		c(MA.idx[i,1],MA.idx[i,2]),
 	main = paste( sampleNames(bottomly.norm)[MA.idx[i,1]], " vs ",
 	 sampleNames(bottomly.norm)[MA.idx[i,2]] ))
 	}
@@ -1126,7 +1161,7 @@ dev.off()
 #b
 ###############################################################################
 bottomly.cS <- colSums(exprs(bottomly.eset)) * 1e-6
-multidensity( t(t(exprs(bottomly.eset)) /bottomly.cS) , xlab="mean counts", xlim=c(0, 500), 
+multidensity( t(t(exprs(bottomly.eset)) /bottomly.cS) , xlab="mean counts", xlim=c(0, 500),
            main = "Bottomly total sum normalized")
 @
 
@@ -1146,7 +1181,7 @@ batch only (e.g. using size). What do you observe?
 
 b.PCA = prcomp(t(bottomly.log2), scale = T)
 dataGG = data.frame(PC1 = b.PCA$x[,1], PC2 = b.PCA$x[,2], strain
-                    = pData(bottomly.eset)$strain, 
+                    = pData(bottomly.eset)$strain,
                     exp = as.factor(pData(bottomly.eset)$experiment.number)
                     ,lane = as.factor(pData(bottomly.eset)$lane.number))
 qplot(PC1, PC2, data = dataGG, color = exp, shape = strain)
