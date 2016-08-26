@@ -1,0 +1,5 @@
+genotype,disease,Freq
+aa,no,40
+AA,no,180
+aa,yes,10
+AA,yes,20

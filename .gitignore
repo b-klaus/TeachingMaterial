@@ -1,9 +1,7 @@
 Data-Handling-lab/Data-Handling-lab-concordance.tex
-Data-Handling-lab/Data-Handling-lab.R
 Data-Handling-lab/Data-Handling-lab.aux
 Data-Handling-lab/Data-Handling-lab.log
 Data-Handling-lab/Data-Handling-lab.out
-Data-Handling-lab/Data-Handling-lab.pdf
 Data-Handling-lab/Data-Handling-lab.tex
 Data-Handling-lab/Data-Handling-lab.toc
 Data-Handling-lab/DataHandling-TSSplot-1.png
@@ -20,7 +18,6 @@ Data-Handling-lab/cache/
 Data-Handling-lab/Data-Handling-lab.aux
 Data-Handling-lab/Data-Handling-lab.log
 Data-Handling-lab/Data-Handling-lab.out
-Data-Handling-lab/Data-Handling-lab.pdf
 Data-Handling-lab/Data-Handling-lab.tex
 Data-Handling-lab/Data-Handling-lab.toc
 Data-Handling-lab/DataHandling-TSSplot-1.png
@@ -35,18 +32,14 @@ Data-Handling-lab/Rlab-plot-protein-data-1.png
 Data-Handling-lab/Rlab-sumexp-1.png
 Data-Handling-lab/cache/
 Data-Handling-lab/dplyr-tutorial.Rmd
-Data-Handling-lab/proteins.csv
 MethodsLab/.Rhistory
 MethodsLab/cache/
 MethodsLab/figure/
-MethodsLab/statisticalMethods-lab.R
 MethodsLab/statisticalMethods-lab.aux
 MethodsLab/statisticalMethods-lab.log
 MethodsLab/statisticalMethods-lab.out
-MethodsLab/statisticalMethods-lab.pdf
 MethodsLab/statisticalMethods-lab.tex
 MethodsLab/statisticalMethods-lab.toc
-TestingLab/candidates.csv
 TestingLab/cont-table.png
 TestingLab/observed-cells.png
 TestingLab/testing-lab.Rnw~
@@ -56,10 +49,10 @@ TestingLab/testing-lab.Rnw~
 /topicsToAdd.md
 /topicsToAdd.md~
 *~
+MethodsLab/pairwiseMAsBottomly.pdf
 *.aux
 *.log
 *.html
-*.pdf
 *.toc
 *.tex
 cache
@@ -67,4 +60,6 @@ figure
 *.out
 introduction_to_ihw.R
 introduction_to_ihw.Rmd
-testing-lab.R
+MaterialApril16/
+commit_msg.txt
+
